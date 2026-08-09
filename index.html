@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta property="og:image" content="assets/sprout-keyart.png">
+  <title>芽芽弹跳方阵</title>
+  <link rel="stylesheet" href="style.css?v=52">
+  <script type="importmap">
+    {"imports":{"three":"./vendor/three/three.module.js","three/addons/":"./vendor/three/addons/"}}
+  </script>
+</head>
+<body>
+  <div id="game" aria-label="低多边形方块棋盘"></div>
+  <header class="hud">
+    <div class="stats" aria-label="本局状态">
+      <div class="level-stat"><span>关卡</span><strong id="level">1</strong></div>
+      <div class="score-stat"><span>分数</span><strong id="score">0</strong></div>
+      <div class="time-stat"><span>时间</span><strong id="timer">90</strong></div>
+      <div class="lives-stat"><span>生命</span><strong id="lives" aria-label="剩余三条生命"></strong></div>
+    </div>
+    <div class="hud-actions">
+      <div class="next-panel"><span>下一组</span><div id="next" class="next-cubes"></div></div>
+      <button id="sound" class="icon-button" type="button" aria-label="关闭声音" title="关闭声音" aria-pressed="true">
+        <img id="soundIcon" src="assets/ui-sound-on.png" alt="" draggable="false">
+      </button>
+    </div>
+  </header>
+
+  <div class="combo"><span>COMBO</span><div><strong id="combo">0</strong><i>/</i><b id="goal">4</b></div></div>
+  <div id="toast" class="toast">四连锁定</div>
+
+  <section id="intro" class="overlay show">
+    <img class="intro-video" src="assets/sprout-keyart.png" alt="">
+    <div class="intro-shade"></div>
+    <div class="intro-copy">
+      <h1><img class="game-logo" src="assets/sprout-logo-v50.png" alt="芽芽弹跳 彩虹方阵" draggable="false"></h1>
+      <button id="start" class="primary" type="button"><span>开始游戏</span><img class="control-icon" src="assets/ui-forward.png" alt="" draggable="false"></button>
+    </div>
+  </section>
+
+  <section id="result" class="overlay result">
+    <div class="result-box">
+      <div id="resultTag" class="kicker">挑战结束</div>
+      <h2 id="resultTitle">再来一局</h2>
+      <div class="score"><strong id="finalScore">0</strong><span>分</span></div>
+      <p id="resultText">差一点完成本层目标。</p>
+      <button id="restart" class="primary" type="button"><span>重新开始</span><img class="control-icon" src="assets/ui-restart.png" alt="" draggable="false"></button>
+    </div>
+  </section>
+
+  <div id="swipePad" class="swipe-pad" aria-hidden="true"><i></i></div>
+  <div id="movePad" class="move-pad" role="group" aria-label="移动方向">
+    <button class="move-key move-up" type="button" data-direction="up" aria-label="向上移动" title="向上"><span aria-hidden="true">↑</span></button>
+    <button class="move-key move-left" type="button" data-direction="left" aria-label="向左移动" title="向左"><span aria-hidden="true">←</span></button>
+    <button class="move-key move-right" type="button" data-direction="right" aria-label="向右移动" title="向右"><span aria-hidden="true">→</span></button>
+    <button class="move-key move-down" type="button" data-direction="down" aria-label="向下移动" title="向下"><span aria-hidden="true">↓</span></button>
+  </div>
+
+  <script type="module" src="game.js?v=52"></script>
+</body>
+</html>
