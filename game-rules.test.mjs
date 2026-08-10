@@ -70,6 +70,30 @@ test('newly refilled or warning tiles cannot create an automatic solid match', (
   assert.equal(orthogonalComponent(board.colors, board.states, indexAt(3, 2), SIZE).length, 3);
 });
 
+test('solid tiles can join an orthogonally connected burst until its last tile pops', () => {
+  const board = makeBoard();
+  const cells = [[3, 1], [3, 2], [3, 3], [3, 4]];
+  paint(board, cells);
+  board.states[indexAt(3, 1)] = 'bursting';
+  const active = orthogonalComponent(
+    board.colors,
+    board.states,
+    indexAt(3, 4),
+    SIZE,
+    ['solid', 'warn', 'bursting']
+  );
+  assert.equal(active.length, 4);
+  board.states[indexAt(3, 1)] = 'falling';
+  const finished = orthogonalComponent(
+    board.colors,
+    board.states,
+    indexAt(3, 4),
+    SIZE,
+    ['solid', 'warn', 'bursting']
+  );
+  assert.equal(finished.length, 3);
+});
+
 test('components respect board edges without wrapping rows', () => {
   const board = makeBoard();
   paint(board, [[0, 6], [1, 6], [2, 6], [3, 6]]);
@@ -80,7 +104,7 @@ test('components respect board edges without wrapping rows', () => {
 });
 
 test('gameplay has no secondary blast path for disconnected tiles', () => {
-  assert.match(gameSource, /const group = connectedMatch\(tile, true\);[\s\S]*?if \(group\.length < 4\) return \[\];[\s\S]*?igniteTiles\(group, 0, LEVELS\[state\.level\]\.warning\);/);
+  assert.match(gameSource, /const group = connectedMatch\(tile, true, true\);[\s\S]*?if \(group\.length < 4\) return \[\];[\s\S]*?igniteTiles\(group, 0, LEVELS\[state\.level\]\.warning\);/);
   assert.doesNotMatch(gameSource, /cardinalBlastTargets|chainTargetsFor|chainTargets/);
 });
 
@@ -91,6 +115,28 @@ test('flashing groups absorb newly connected same-color solid tiles', () => {
   assert.match(gameSource, /member\.userData\.state = 'warn';[\s\S]*?member\.userData\.timer = remaining;/);
 });
 
+test('active bursts absorb connected same-color tiles and leave one hop to escape', () => {
+  assert.match(gameSource, /const bursting = group\.filter\(\(member\) => member\.userData\.state === 'bursting'\)/);
+  assert.match(gameSource, /function extendBurstingGroup\(group, bursting\)[\s\S]*?state === 'solid' \|\| member\.userData\.state === 'warn'/);
+  assert.match(gameSource, /const escapeWindow = HOP_DURATION \+ 0\.08/);
+  assert.match(gameSource, /setBurstingTile\([\s\S]*?state\.refillRemaining \+= added\.length;[\s\S]*?state\.score \+= points;/);
+  assert.match(gameSource, /state\.currentTile === tile;[\s\S]*?if \(playerCaught\) loseLife\('被爆破卷走了', 'blast'\);/);
+});
+
+test('reward waits for the final burst size and is never randomized', () => {
+  assert.match(gameSource, /pendingRewards: new Map\(\)/);
+  assert.match(gameSource, /state\.pendingRewards\.set\(group\[0\]\.userData\.warningId, \{ tileCount: group\.length \}\)/);
+  assert.match(gameSource, /pendingReward\.tileCount \+= added\.length/);
+  assert.match(gameSource, /const stillBursting = tiles\.some[\s\S]*?rewardRankForTileCount\(reward\.tileCount\)[\s\S]*?spawnBonus\(rewardRank, reward\.tileCount\)/);
+  assert.match(gameSource, /const gainedRounds = roundsForTileCount\(reward\.tileCount\)[\s\S]*?state\.rounds \+= gainedRounds[\s\S]*?state\.rounds >= LEVELS\[state\.level\]\.roundGoal/);
+  assert.doesNotMatch(gameSource, /state\.combo \+= 1/);
+  assert.doesNotMatch(gameSource, /Math\.random\(\) < 0\.72|schedule\(spawnBonus, 450\)/);
+  assert.match(gameSource, /new THREE\.IcosahedronGeometry\(0\.37, 0\)/);
+  assert.match(gameSource, /new THREE\.OctahedronGeometry\(0\.4, 0\)/);
+  assert.match(gameSource, /new THREE\.DodecahedronGeometry\(0\.39, 0\)/);
+  assert.match(gameSource, /new THREE\.CylinderGeometry\(0\.42, 0\.06, 0\.44, 8\)/);
+});
+
 test('replacement tiles grow from the board instead of falling from above', () => {
   assert.match(gameSource, /data\.state = 'growing';[\s\S]*?tile\.position\.y = -0\.42;[\s\S]*?tile\.scale\.set\(0\.78, 0\.06, 0\.78\);/);
   assert.doesNotMatch(gameSource, /data\.state = 'dropping'|tile\.position\.y = 5\.5/);
@@ -99,6 +145,7 @@ test('replacement tiles grow from the board instead of falling from above', () =
 test('tiles use rounded geometry and a damped landing bounce', () => {
   assert.match(gameSource, /new RoundedBoxGeometry\(SIZE, 0\.72, SIZE, 3, 0\.23\)/);
   assert.match(gameSource, /new RoundedBoxGeometry\(SIZE - 0\.12, 0\.1, SIZE - 0\.12, 2, 0\.16\)/);
-  assert.match(gameSource, /bounceStrength = 1;[\s\S]*?function updateTileBounce/);
-  assert.match(gameSource, /Math\.cos\(data\.bounceAge \* 17\) \* data\.bounceStrength/);
+  assert.match(gameSource, /bounceStrength = 1\.15;[\s\S]*?function updateTileBounce/);
+  assert.match(gameSource, /Math\.cos\(data\.bounceAge \* 19\) \* data\.bounceStrength/);
+  assert.match(gameSource, /tile\.scale\.set\(1 \+ wave \* 0\.075, 1 - wave \* 0\.16, 1 \+ wave \* 0\.075\)/);
 });

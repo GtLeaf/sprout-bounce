@@ -3,9 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta property="og:title" content="Happy Jump">
   <meta property="og:image" content="assets/sprout-keyart.png">
-  <title>芽芽弹跳方阵</title>
-  <link rel="stylesheet" href="style.css?v=65">
+  <meta name="application-name" content="Happy Jump">
+  <meta name="apple-mobile-web-app-title" content="Happy Jump">
+  <title>Happy Jump</title>
+  <link rel="stylesheet" href="style.css?v=83">
   <script type="importmap">
     {"imports":{"three":"./vendor/three/three.module.js","three/addons/":"./vendor/three/addons/"}}
   </script>
@@ -27,15 +30,15 @@
     </div>
   </header>
 
-  <div class="combo"><span>COMBO</span><div><strong id="combo">0</strong><i>/</i><b id="goal">2</b></div></div>
+  <div class="combo" aria-label="本层爆破回合"><span>回合</span><div><strong id="combo">00</strong><i>/</i><b id="goal">05</b></div></div>
   <div id="toast" class="toast">四连锁定</div>
 
   <section id="intro" class="overlay show">
     <img class="intro-video" src="assets/sprout-keyart.png" alt="">
     <div class="intro-shade"></div>
     <div class="intro-copy">
-      <h1><img class="game-logo" src="assets/sprout-logo-v50.png" alt="芽芽弹跳 彩虹方阵" draggable="false"></h1>
-      <button id="start" class="primary" type="button"><span>开始游戏</span><img class="control-icon" src="assets/ui-forward.png" alt="" draggable="false"></button>
+      <h1><img class="game-logo" src="assets/happy-jump-logo-v80.png" alt="Happy Jump" draggable="false"></h1>
+      <button id="start" class="primary" type="button"><span>开始游戏</span><img class="control-icon" src="assets/ui-forward-v80.png" alt="" draggable="false"></button>
     </div>
   </section>
 
@@ -49,7 +52,46 @@
     </div>
   </section>
 
+  <section id="tutorial" class="tutorial" role="dialog" aria-modal="true" aria-labelledby="tutorialTitle" aria-describedby="tutorialText" hidden>
+    <div class="tutorial-stage">
+      <button id="tutorialClose" class="tutorial-control tutorial-close" type="button" aria-label="关闭新手引导" title="关闭新手引导"><span aria-hidden="true">×</span></button>
+
+      <div id="tutorialVisual" class="tutorial-visual" data-step="0">
+        <div class="tutorial-scene tutorial-scene-move" data-tutorial-step="0" aria-hidden="false">
+          <div class="tutorial-move-cue" aria-hidden="true">
+            <i class="tutorial-direction direction-up">↑</i>
+            <i class="tutorial-direction direction-right">→</i>
+            <i class="tutorial-direction direction-down">↓</i>
+            <i class="tutorial-direction direction-left">←</i>
+            <span class="tutorial-touch-point"></span>
+          </div>
+        </div>
+        <div class="tutorial-scene tutorial-scene-connect" data-tutorial-step="1" aria-hidden="true">
+          <div class="tutorial-mini-grid" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+        </div>
+        <div class="tutorial-scene tutorial-scene-warning" data-tutorial-step="2" aria-hidden="true">
+          <div class="tutorial-warning-group" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          <span class="tutorial-escape-arrow" aria-hidden="true">→</span>
+          <i class="tutorial-safe-tile" aria-hidden="true"></i>
+        </div>
+      </div>
+
+      <div class="tutorial-card">
+        <div class="tutorial-copy">
+          <span id="tutorialKicker" class="tutorial-kicker">1 / 3</span>
+          <h2 id="tutorialTitle">滑动跳跃</h2>
+          <p id="tutorialText">向上下左右滑动，让角色跳到相邻方块。</p>
+        </div>
+        <div class="tutorial-footer">
+          <button id="tutorialPrev" class="tutorial-control" type="button" aria-label="上一步" title="上一步"><span aria-hidden="true">‹</span></button>
+          <div class="tutorial-progress" aria-hidden="true"><i></i><i></i><i></i></div>
+          <button id="tutorialNext" class="tutorial-control" type="button" aria-label="下一步" title="下一步"><span aria-hidden="true">›</span></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <div id="swipePad" class="swipe-pad" aria-hidden="true"><i></i></div>
-  <script type="module" src="game.js?v=69"></script>
+  <script type="module" src="game.js?v=83"></script>
 </body>
 </html>

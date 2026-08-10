@@ -14,7 +14,8 @@ const mimeTypes = {
   '.jpg': 'image/jpeg',
   '.mjs': 'text/javascript; charset=utf-8',
   '.png': 'image/png',
-  '.svg': 'image/svg+xml'
+  '.svg': 'image/svg+xml',
+  '.wav': 'audio/wav'
 };
 
 function openBrowser(url) {

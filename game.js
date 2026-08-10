@@ -1,16 +1,115 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { EXPLOSION_TIMING, LEVELS, TILE_COLORS } from './game-config.mjs?v=69';
-import { orthogonalComponent } from './game-rules.mjs?v=65';
+import { EXPLOSION_TIMING, LEVELS, REWARD_TILE_THRESHOLDS, TILES_PER_ROUND, TILE_COLORS, rewardRankForTileCount, roundsForTileCount } from './game-config.mjs?v=83';
+import { orthogonalComponent } from './game-rules.mjs?v=83';
 
 const $ = (selector) => document.querySelector(selector);
 const QA_MODE = new URLSearchParams(location.search).has('qa');
 
 const ui = {
   intro: $('#intro'), result: $('#result'), level: $('#level'), score: $('#score'),
-  timer: $('#timer'), combo: $('#combo'), goal: $('#goal'), lives: $('#lives'),
+  timer: $('#timer'), rounds: $('#combo'), roundGoal: $('#goal'), lives: $('#lives'),
   next: $('#next'), toast: $('#toast')
 };
+
+const tutorialUi = {
+  root: $('#tutorial'), visual: $('#tutorialVisual'), close: $('#tutorialClose'),
+  previous: $('#tutorialPrev'), next: $('#tutorialNext'),
+  kicker: $('#tutorialKicker'), title: $('#tutorialTitle'), text: $('#tutorialText'),
+  dots: [...document.querySelectorAll('.tutorial-progress i')],
+  scenes: [...document.querySelectorAll('[data-tutorial-step]')]
+};
+const TUTORIAL_STEPS = [
+  { title: '滑动跳跃', text: '向上下左右滑动，让角色跳到相邻方块。' },
+  { title: '连成四格', text: '踩过方块改变颜色，连接四个以上同色方块。' },
+  { title: '及时撤离', text: '方块闪烁时继续扩大片区，并在塌陷前跳到安全格。' }
+];
+const TUTORIAL_STORAGE_KEY = 'happy-jump-mobile-tutorial-v2';
+const TUTORIAL_QUERY = new URLSearchParams(location.search).get('tutorial');
+let tutorialStep = 0;
+let tutorialPointerStart = null;
+let tutorialLockBeforeShow = false;
+let tutorialPending = true;
+
+function hasSeenTutorial() {
+  try { return localStorage.getItem(TUTORIAL_STORAGE_KEY) === 'done'; }
+  catch { return false; }
+}
+
+function rememberTutorial() {
+  try { localStorage.setItem(TUTORIAL_STORAGE_KEY, 'done'); }
+  catch { /* Storage can be unavailable in private browsing. */ }
+}
+
+function isMobileTutorialVisit() {
+  if (TUTORIAL_QUERY === '1') return true;
+  if (TUTORIAL_QUERY === '0') return false;
+  return innerWidth <= 900 && (innerWidth <= 600 || navigator.maxTouchPoints > 0 || matchMedia('(pointer: coarse)').matches);
+}
+
+function renderTutorialStep() {
+  const step = TUTORIAL_STEPS[tutorialStep];
+  tutorialUi.visual.dataset.step = String(tutorialStep);
+  tutorialUi.kicker.textContent = `${tutorialStep + 1} / ${TUTORIAL_STEPS.length}`;
+  tutorialUi.title.textContent = step.title;
+  tutorialUi.text.textContent = step.text;
+  tutorialUi.dots.forEach((dot, index) => dot.classList.toggle('active', index === tutorialStep));
+  tutorialUi.scenes.forEach((scene, index) => scene.setAttribute('aria-hidden', index === tutorialStep ? 'false' : 'true'));
+  tutorialUi.previous.disabled = tutorialStep === 0;
+  tutorialUi.next.querySelector('span').textContent = tutorialStep === TUTORIAL_STEPS.length - 1 ? '✓' : '›';
+  tutorialUi.next.setAttribute('aria-label', tutorialStep === TUTORIAL_STEPS.length - 1 ? '完成新手引导' : '下一步');
+  tutorialUi.next.title = tutorialStep === TUTORIAL_STEPS.length - 1 ? '完成新手引导' : '下一步';
+}
+
+function showTutorial() {
+  tutorialStep = 0;
+  tutorialLockBeforeShow = state.locked;
+  state.locked = true;
+  state.queuedMove = null;
+  pointerStart = null;
+  swipePad.classList.remove('show');
+  tutorialUi.root.hidden = false;
+  tutorialUi.root.classList.add('show');
+  renderTutorialStep();
+  tutorialUi.next.focus({ preventScroll: true });
+}
+
+function dismissTutorial() {
+  rememberTutorial();
+  tutorialUi.root.classList.remove('show');
+  tutorialUi.root.hidden = true;
+  tutorialPointerStart = null;
+  if (state.running && !state.over) state.locked = tutorialLockBeforeShow;
+}
+
+function setTutorialStep(nextStep) {
+  tutorialStep = Math.max(0, Math.min(2, nextStep));
+  renderTutorialStep();
+}
+
+tutorialUi.close.addEventListener('click', dismissTutorial);
+tutorialUi.previous.addEventListener('click', () => setTutorialStep(tutorialStep - 1));
+tutorialUi.next.addEventListener('click', () => {
+  if (tutorialStep === TUTORIAL_STEPS.length - 1) dismissTutorial();
+  else setTutorialStep(tutorialStep + 1);
+});
+tutorialUi.visual.addEventListener('pointerdown', (event) => {
+  tutorialPointerStart = { id: event.pointerId, x: event.clientX };
+  tutorialUi.visual.setPointerCapture?.(event.pointerId);
+});
+tutorialUi.visual.addEventListener('pointerup', (event) => {
+  if (!tutorialPointerStart || tutorialPointerStart.id !== event.pointerId) return;
+  const delta = event.clientX - tutorialPointerStart.x;
+  tutorialPointerStart = null;
+  if (Math.abs(delta) >= 36) setTutorialStep(tutorialStep + (delta < 0 ? 1 : -1));
+});
+tutorialUi.visual.addEventListener('pointercancel', () => { tutorialPointerStart = null; });
+addEventListener('keydown', (event) => {
+  if (!tutorialUi.root.classList.contains('show')) return;
+  if (event.key === 'Escape') dismissTutorial();
+  if (event.key === 'ArrowLeft') setTutorialStep(tutorialStep - 1);
+  if (event.key === 'ArrowRight') tutorialStep === TUTORIAL_STEPS.length - 1 ? dismissTutorial() : setTutorialStep(tutorialStep + 1);
+});
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x5adbe4, 34, 58);
@@ -44,7 +143,39 @@ const GAP = 0.10;
 const STEP = SIZE + GAP;
 const PLAYER_BASE = 0.43;
 const HOP_DURATION = 0.25;
+const HOP_ANTICIPATION = 0.11;
+const HOP_FLIGHT_END = 0.88;
+const HOP_HEIGHT = 1.5;
 const HELD_MOVE_INTERVAL = 235;
+const MOBILE_CAMERA_DISTANCE = 15.6;
+const MOBILE_CAMERA_TARGET_X = -0.38;
+const JUMP_LYRIC_FILES = [
+  'assets/audio/jump-lyrics/01-wo.wav',
+  'assets/audio/jump-lyrics/02-shi.wav',
+  'assets/audio/jump-lyrics/03-yi.wav',
+  'assets/audio/jump-lyrics/04-ke.wav',
+  'assets/audio/jump-lyrics/05-xiao.wav',
+  'assets/audio/jump-lyrics/06-ping.wav',
+  'assets/audio/jump-lyrics/07-guo.wav',
+  'assets/audio/jump-lyrics/08-jiu.wav',
+  'assets/audio/jump-lyrics/09-ai.wav',
+  'assets/audio/jump-lyrics/10-tiao.wav',
+  'assets/audio/jump-lyrics/11-tiao.wav',
+  'assets/audio/jump-lyrics/12-le.wav'
+];
+const JUMP_LYRIC_TEXT = ['我', '是', '一', '颗', '小', '苹', '果', '就', '爱', '跳', '跳', '乐'];
+const JUMP_LYRIC_PHRASE = JUMP_LYRIC_TEXT.join('');
+const JUMP_LYRIC_RESET_GAP = 900;
+const JUMP_LYRIC_BUS_GAIN = 0.7;
+const MIX_AUDIO_FILES = Object.freeze({
+  bgm: 'assets/audio/mix-v83/happyjump-bgm-airy-loop.wav',
+  levelClear: 'assets/audio/mix-v83/happyjump-level-clear.wav',
+  fullClear: 'assets/audio/mix-v83/happyjump-full-clear.wav',
+  lifeLost: 'assets/audio/mix-v83/happyjump-life-lost.wav',
+  gameOver: 'assets/audio/mix-v83/happyjump-game-over.wav',
+  timeout: 'assets/audio/mix-v83/happyjump-timeout.wav'
+});
+const MIX_CUE_GAINS = Object.freeze({ levelClear: 0.46, fullClear: 0.48, lifeLost: 0.38, gameOver: 0.42, timeout: 0.4 });
 const COLOR_DEFS = TILE_COLORS;
 const COLORS = COLOR_DEFS.map((item) => item.hex);
 const MAX_LIVES = 3;
@@ -58,17 +189,9 @@ const lowPolyMaterial = (color, options = {}) => new THREE.MeshStandardMaterial(
 });
 
 const boardSpan = BOARD * STEP - GAP;
-const boardFrameGeometry = new RoundedBoxGeometry(boardSpan + 0.9, 0.62, boardSpan + 0.9, 1, 0.22);
-const boardFrame = new THREE.Mesh(
-  boardFrameGeometry,
-  lowPolyMaterial(0xe0b75f)
-);
-boardFrame.position.y = -0.96;
-boardFrame.receiveShadow = true;
-scene.add(boardFrame);
-
+const platformRadius = (boardSpan + 0.34) / Math.SQRT2;
 const island = new THREE.Mesh(
-  new THREE.CylinderGeometry(8.35, 5.65, 3.8, 4, 2, false),
+  new THREE.CylinderGeometry(platformRadius - 0.08, 5.65, 3.8, 4, 2, false),
   [
     lowPolyMaterial(0x6f8790),
     lowPolyMaterial(0x70c94b),
@@ -82,8 +205,8 @@ island.castShadow = true;
 scene.add(island);
 
 const islandRim = new THREE.Mesh(
-  new THREE.CylinderGeometry(8.43, 8.22, 0.34, 4, 1, false),
-  lowPolyMaterial(0x75cf4e)
+  new THREE.CylinderGeometry(platformRadius, platformRadius - 0.16, 0.28, 4, 1, false),
+  lowPolyMaterial(0xe0b75f)
 );
 islandRim.position.y = -1.04;
 islandRim.rotation.y = Math.PI / 4;
@@ -161,12 +284,14 @@ function tileAt(row, col) {
   return row >= 0 && row < BOARD && col >= 0 && col < BOARD ? tiles[row * BOARD + col] : null;
 }
 
-function connectedMatch(start, includeWarning = false) {
+function connectedMatch(start, includeWarning = false, includeBursting = false) {
   if (!start) return [];
   const states = tiles.map((tile) => tile.userData.state);
   const colors = tiles.map((tile) => tile.userData.color);
   const startIndex = start.userData.row * BOARD + start.userData.col;
-  const allowedStates = includeWarning ? ['solid', 'warn'] : ['solid'];
+  const allowedStates = ['solid'];
+  if (includeWarning) allowedStates.push('warn');
+  if (includeBursting) allowedStates.push('bursting');
   return orthogonalComponent(colors, states, startIndex, BOARD, allowedStates).map((index) => tiles[index]);
 }
 
@@ -337,6 +462,24 @@ function clearEffects() {
 }
 
 const MUSIC_BUS_GAIN = 0.34;
+const jumpLyricFetches = JUMP_LYRIC_FILES.map(async (url) => {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Unable to load jump lyric: ${url}`);
+    return { data: await response.arrayBuffer(), error: null };
+  } catch (error) {
+    return { data: null, error };
+  }
+});
+const mixAudioFetches = Object.entries(MIX_AUDIO_FILES).map(async ([name, url]) => {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Unable to load mix audio: ${url}`);
+    return { name, data: await response.arrayBuffer(), error: null };
+  } catch (error) {
+    return { name, data: null, error };
+  }
+});
 
 const state = {
   running: false,
@@ -344,7 +487,7 @@ const state = {
   locked: false,
   level: 0,
   score: 0,
-  combo: 0,
+  rounds: 0,
   lives: 3,
   time: LEVELS[0].time,
   currentTile: null,
@@ -356,6 +499,7 @@ const state = {
   invulnerable: 0,
   velocity: new THREE.Vector3(),
   warningId: 0,
+  pendingRewards: new Map(),
   refillRemaining: 0,
   nextQueue: [],
   transitionTimer: 0,
@@ -367,12 +511,25 @@ const state = {
   audio: null,
   audioOutput: null,
   sfxBus: null,
+  lyricBus: null,
   musicBus: null,
   musicFilter: null,
   noiseBuffer: null,
   musicNext: 0,
   musicStep: 0,
+  musicSource: null,
+  mixAudioBuffers: {},
+  mixAudioLoad: null,
+  mixAudioStatus: 'not-started',
+  activeMixSources: new Set(),
   lastTimeCue: null,
+  landingAge: 0,
+  landingStrength: 0,
+  jumpLyricBuffers: [],
+  jumpLyricLoad: null,
+  jumpLyricIndex: 0,
+  jumpLyricLastAt: -Infinity,
+  activeJumpLyricSource: null,
   audioEvents: []
 };
 
@@ -410,6 +567,10 @@ function ensureAudio() {
     state.sfxBus.gain.value = 1;
     state.sfxBus.connect(compressor);
 
+    state.lyricBus = state.audio.createGain();
+    state.lyricBus.gain.value = JUMP_LYRIC_BUS_GAIN;
+    state.lyricBus.connect(compressor);
+
     state.musicBus = state.audio.createGain();
     state.musicBus.gain.value = MUSIC_BUS_GAIN;
     state.musicFilter = state.audio.createBiquadFilter();
@@ -418,17 +579,179 @@ function ensureAudio() {
     state.musicFilter.Q.value = 0.45;
     state.musicBus.connect(state.musicFilter).connect(compressor);
   }
+  loadJumpLyrics(state.audio);
+  loadMixAudio(state.audio);
   if (state.audio.state === 'suspended') state.audio.resume();
   return state.audio;
 }
 
+function syncJumpLyricState(status = null) {
+  document.documentElement.dataset.jumpLyrics = status
+    ?? (state.jumpLyricBuffers.length === JUMP_LYRIC_FILES.length ? 'ready' : state.jumpLyricLoad ? 'loading' : 'not-started');
+  document.documentElement.dataset.jumpLyricLoaded = String(state.jumpLyricBuffers.filter(Boolean).length);
+  document.documentElement.dataset.jumpLyricNext = JUMP_LYRIC_TEXT[state.jumpLyricIndex] ?? JUMP_LYRIC_TEXT[0];
+  document.documentElement.dataset.jumpLyricPhrase = JUMP_LYRIC_PHRASE;
+}
+
+function loadJumpLyrics(context) {
+  if (state.jumpLyricLoad) return state.jumpLyricLoad;
+  syncJumpLyricState('loading');
+  state.jumpLyricLoad = Promise.all(jumpLyricFetches)
+    .then((files) => {
+      const failed = files.find(({ error }) => error);
+      if (failed) throw failed.error;
+      return Promise.all(files.map(({ data }) => context.decodeAudioData(data.slice(0))));
+    })
+    .then((buffers) => {
+      state.jumpLyricBuffers = buffers;
+      syncJumpLyricState('ready');
+      return buffers;
+    })
+    .catch((error) => {
+      console.warn('Jump lyric audio could not be loaded; using synthesized bounce sounds.', error);
+      state.jumpLyricBuffers = [];
+      syncJumpLyricState('fallback');
+      return [];
+    });
+  return state.jumpLyricLoad;
+}
+
+function loadMixAudio(context) {
+  if (state.mixAudioLoad) return state.mixAudioLoad;
+  state.mixAudioStatus = 'loading';
+  state.mixAudioLoad = Promise.all(mixAudioFetches)
+    .then(async (files) => {
+      const decoded = await Promise.all(files.map(async ({ name, data, error }) => {
+        if (error || !data) return [name, null];
+        try { return [name, await context.decodeAudioData(data.slice(0))]; }
+        catch (decodeError) {
+          console.warn(`Mix audio could not be decoded: ${name}`, decodeError);
+          return [name, null];
+        }
+      }));
+      state.mixAudioBuffers = Object.fromEntries(decoded);
+      state.mixAudioStatus = state.mixAudioBuffers.bgm ? 'ready' : 'fallback';
+      if (state.sound && state.running && !state.musicSource && state.mixAudioBuffers.bgm) startSampledMusic();
+      syncAudioState();
+      return state.mixAudioBuffers;
+    })
+    .catch((error) => {
+      console.warn('Generated mix audio could not be loaded; using the beatless synthesized fallback.', error);
+      state.mixAudioBuffers = {};
+      state.mixAudioStatus = 'fallback';
+      syncAudioState();
+      return {};
+    });
+  return state.mixAudioLoad;
+}
+
+function playMixCue(name, { delay = 0, playbackRate = 1 } = {}) {
+  const buffer = state.mixAudioBuffers[name];
+  if (!state.sound || !buffer) return false;
+  const context = ensureAudio();
+  const source = context.createBufferSource();
+  const gain = context.createGain();
+  source.buffer = buffer;
+  source.playbackRate.value = playbackRate;
+  gain.gain.value = MIX_CUE_GAINS[name] ?? 0.42;
+  source.connect(gain).connect(state.sfxBus ?? state.audioOutput);
+  state.activeMixSources.add(source);
+  source.onended = () => {
+    state.activeMixSources.delete(source);
+    source.disconnect();
+    gain.disconnect();
+  };
+  source.start(context.currentTime + delay);
+  state.audioEvents.push({ name: 'sampleCue', cue: name, at: Math.round(performance.now() + delay * 1000) });
+  if (state.audioEvents.length > 32) state.audioEvents.shift();
+  return true;
+}
+
+function stopMixCues() {
+  for (const source of state.activeMixSources) {
+    try { source.stop(); }
+    catch { /* The source may already have ended. */ }
+    source.disconnect();
+  }
+  state.activeMixSources.clear();
+}
+
+function startSampledMusic() {
+  const buffer = state.mixAudioBuffers.bgm;
+  if (!state.sound || !buffer || state.musicSource) return false;
+  const source = state.audio.createBufferSource();
+  source.buffer = buffer;
+  source.loop = true;
+  source.loopStart = 0;
+  source.loopEnd = buffer.duration;
+  source.connect(state.musicBus);
+  source.onended = () => {
+    if (state.musicSource === source) state.musicSource = null;
+    source.disconnect();
+  };
+  source.start();
+  state.musicSource = source;
+  state.audioEvents.push({ name: 'musicStart', style: 'airy-beatless-sample', at: Math.round(performance.now()) });
+  if (state.audioEvents.length > 32) state.audioEvents.shift();
+  return true;
+}
+
+function stopJumpLyric() {
+  if (!state.activeJumpLyricSource) return;
+  try { state.activeJumpLyricSource.stop(); }
+  catch { /* The source may already have ended. */ }
+  state.activeJumpLyricSource.disconnect();
+  state.activeJumpLyricSource = null;
+}
+
+function resetJumpLyricPhrase() {
+  stopJumpLyric();
+  state.jumpLyricIndex = 0;
+  state.jumpLyricLastAt = -Infinity;
+  syncJumpLyricState();
+}
+
+function playJumpLyric() {
+  if (!state.sound) return false;
+  const context = ensureAudio();
+  if (state.jumpLyricBuffers.length !== JUMP_LYRIC_FILES.length || !state.lyricBus) return false;
+
+  const now = performance.now();
+  if (now - state.jumpLyricLastAt > JUMP_LYRIC_RESET_GAP) state.jumpLyricIndex = 0;
+  const index = state.jumpLyricIndex;
+  const buffer = state.jumpLyricBuffers[index];
+  if (!buffer) return false;
+
+  stopJumpLyric();
+  const source = context.createBufferSource();
+  source.buffer = buffer;
+  source.connect(state.lyricBus);
+  source.onended = () => {
+    if (state.activeJumpLyricSource === source) state.activeJumpLyricSource = null;
+    source.disconnect();
+  };
+  source.start();
+  state.activeJumpLyricSource = source;
+  state.jumpLyricIndex = (index + 1) % JUMP_LYRIC_TEXT.length;
+  state.jumpLyricLastAt = now;
+  state.audioEvents.push({ name: 'jumpLyric', lyric: JUMP_LYRIC_TEXT[index], lyricIndex: index, at: Math.round(now) });
+  if (state.audioEvents.length > 32) state.audioEvents.shift();
+  duckMusic(0.42, 0.28);
+  syncJumpLyricState('ready');
+  return true;
+}
+
 function syncAudioState() {
   document.documentElement.dataset.audioState = state.audio?.state ?? 'not-started';
-  document.documentElement.dataset.musicStyle = 'airy-toybox-offbeat';
-  document.documentElement.dataset.audioMix = 'character-priority';
-  document.documentElement.dataset.musicTempo = String(MUSIC_TEMPO);
+  document.documentElement.dataset.musicStyle = 'airy-beatless-sample';
+  document.documentElement.dataset.musicPulse = 'none';
+  document.documentElement.dataset.audioMix = 'lyric-led-character-priority';
+  document.documentElement.dataset.mixAudio = state.mixAudioStatus;
+  document.documentElement.dataset.mixAudioLoaded = String(Object.values(state.mixAudioBuffers).filter(Boolean).length);
+  document.documentElement.dataset.musicTempo = 'free';
   document.documentElement.dataset.musicStep = String(state.musicStep);
   document.documentElement.dataset.sound = String(state.sound);
+  syncJumpLyricState();
   const soundButton = document.querySelector('#sound');
   const soundIcon = document.querySelector('#soundIcon');
   soundButton?.setAttribute('aria-pressed', String(state.sound));
@@ -512,11 +835,13 @@ function sfx(name, detail = {}) {
   state.audioEvents.push({ name, at: Math.round(performance.now()), ...detail });
   if (state.audioEvents.length > 32) state.audioEvents.shift();
   if (name === 'jump') {
-    voice({ from: 310, peak: 545, to: 455, duration: 0.115, volume: 0.026, attack: 0.007 });
-    voice({ from: 930, to: 720, duration: 0.052, volume: 0.005, delay: 0.022, type: 'triangle' });
+    if (!playJumpLyric()) {
+      voice({ from: 310, peak: 545, to: 455, duration: 0.115, volume: 0.026, attack: 0.007 });
+      voice({ from: 930, to: 720, duration: 0.052, volume: 0.005, delay: 0.022, type: 'triangle' });
+    }
   } else if (name === 'bounce') {
     const note = 326 + (detail.color ?? 0) * 7;
-    voice({ from: note, peak: note * 1.48, to: note * 1.22, duration: 0.1, volume: 0.019, attack: 0.006 });
+    if (!playJumpLyric()) voice({ from: note, peak: note * 1.48, to: note * 1.22, duration: 0.1, volume: 0.019, attack: 0.006 });
     noisePuff(0.045, 0.0022, 760);
   } else if (name === 'land') {
     const note = 214 + (detail.color ?? 0) * 6;
@@ -580,28 +905,38 @@ function sfx(name, detail = {}) {
     [660, 880, 1040].forEach((note, index) => voice({ from: note, to: note * 1.025, duration: 0.15, volume: 0.014, delay: index * 0.075, type: index === 1 ? 'triangle' : 'sine' }));
   } else if (name === 'levelClear') {
     duckMusic(0.48, 0.78);
-    [740, 930, 1175, 1480].forEach((note, index) => voice({ from: note * 0.985, to: note * 1.025, duration: index === 3 ? 0.42 : 0.18, volume: index === 3 ? 0.027 : 0.019, delay: index * 0.105, type: index % 2 ? 'triangle' : 'sine' }));
-    noiseSnap(0.09, 0.004, 6400, 0.33);
+    if (!playMixCue('levelClear')) {
+      [740, 930, 1175, 1480].forEach((note, index) => voice({ from: note * 0.985, to: note * 1.025, duration: index === 3 ? 0.42 : 0.18, volume: index === 3 ? 0.027 : 0.019, delay: index * 0.105, type: index % 2 ? 'triangle' : 'sine' }));
+      noiseSnap(0.09, 0.004, 6400, 0.33);
+    }
   } else if (name === 'fall') {
     voice({ from: 680, peak: 760, to: 310, duration: 0.36, volume: 0.021, type: 'sine', attack: 0.025 });
   } else if (name === 'lifeLost' || name === 'lastLife') {
     const delay = detail.delay ?? 0;
-    voice({ from: 520, to: 390, duration: 0.22, volume: 0.021, delay, type: 'triangle', attack: 0.018 });
-    voice({ from: 340, to: name === 'lastLife' ? 205 : 255, duration: 0.3, volume: 0.022, delay: delay + 0.15, type: 'sine', attack: 0.025 });
-    noisePuff(0.16, 0.006, 480, delay + 0.13);
+    if (!playMixCue('lifeLost', { delay, playbackRate: name === 'lastLife' ? 0.92 : 1 })) {
+      voice({ from: 520, to: 390, duration: 0.22, volume: 0.021, delay, type: 'triangle', attack: 0.018 });
+      voice({ from: 340, to: name === 'lastLife' ? 205 : 255, duration: 0.3, volume: 0.022, delay: delay + 0.15, type: 'sine', attack: 0.025 });
+      noisePuff(0.16, 0.006, 480, delay + 0.13);
+    }
   } else if (name === 'countdown') {
     const note = detail.second === 1 ? 1040 : 820;
     voice({ from: note, to: note * 0.965, duration: detail.second === 1 ? 0.15 : 0.085, volume: 0.011, type: 'sine' });
   } else if (name === 'timeout') {
-    [660, 520, 390].forEach((note, index) => voice({ from: note, to: note * 0.91, duration: index === 2 ? 0.5 : 0.22, volume: 0.024, delay: index * 0.21, type: index === 1 ? 'triangle' : 'sine', attack: 0.025 }));
-    noisePuff(0.28, 0.007, 520, 0.38);
+    if (!playMixCue('timeout')) {
+      [660, 520, 390].forEach((note, index) => voice({ from: note, to: note * 0.91, duration: index === 2 ? 0.5 : 0.22, volume: 0.024, delay: index * 0.21, type: index === 1 ? 'triangle' : 'sine', attack: 0.025 }));
+      noisePuff(0.28, 0.007, 520, 0.38);
+    }
   } else if (name === 'gameOver') {
-    [520, 415, 330, 247].forEach((note, index) => voice({ from: note * 1.035, to: note, duration: index === 3 ? 0.72 : 0.3, volume: index === 3 ? 0.026 : 0.019, delay: index * 0.19, type: index % 2 ? 'triangle' : 'sine', attack: 0.035 }));
-    noisePuff(0.34, 0.006, 410, 0.56);
+    if (!playMixCue('gameOver')) {
+      [520, 415, 330, 247].forEach((note, index) => voice({ from: note * 1.035, to: note, duration: index === 3 ? 0.72 : 0.3, volume: index === 3 ? 0.026 : 0.019, delay: index * 0.19, type: index % 2 ? 'triangle' : 'sine', attack: 0.035 }));
+      noisePuff(0.34, 0.006, 410, 0.56);
+    }
   } else if (name === 'fullClear') {
-    const phrase = [740, 930, 1175, 1397, 1760, 1480, 1976];
-    phrase.forEach((note, index) => voice({ from: note * 0.985, to: note * 1.018, duration: index === phrase.length - 1 ? 0.78 : 0.22, volume: index === phrase.length - 1 ? 0.029 : 0.019, delay: index * 0.115, type: index % 3 === 1 ? 'triangle' : 'sine', attack: 0.016 }));
-    [0.18, 0.43, 0.7].forEach((delay, index) => noiseSnap(0.1, 0.0045 - index * 0.0005, 6200 + index * 700, delay));
+    if (!playMixCue('fullClear')) {
+      const phrase = [740, 930, 1175, 1397, 1760, 1480, 1976];
+      phrase.forEach((note, index) => voice({ from: note * 0.985, to: note * 1.018, duration: index === phrase.length - 1 ? 0.78 : 0.22, volume: index === phrase.length - 1 ? 0.029 : 0.019, delay: index * 0.115, type: index % 3 === 1 ? 'triangle' : 'sine', attack: 0.016 }));
+      [0.18, 0.43, 0.7].forEach((delay, index) => noiseSnap(0.1, 0.0045 - index * 0.0005, 6200 + index * 700, delay));
+    }
   } else if (name === 'toggle') {
     voice({ from: 620, peak: 1080, to: 900, duration: 0.13, volume: 0.026 });
   }
@@ -614,85 +949,31 @@ function scheduleWarningTicks(duration, chainDepth) {
   }, duration * ratio * 1000));
 }
 
-const MUSIC_TEMPO = 118;
-const MUSIC_STEP_SECONDS = 60 / MUSIC_TEMPO / 2;
+const MUSIC_STEP_SECONDS = 0.5;
 const MUSIC_LOOKAHEAD = 0.18;
 const MUSIC_CHORDS = [
   { pad: 60, notes: [72, 76, 79], bell: 96 },
   { pad: 55, notes: [71, 74, 79], bell: 95 },
   { pad: 57, notes: [72, 76, 81], bell: 96 },
-  { pad: 53, notes: [69, 72, 77], bell: 93 },
-  { pad: 60, notes: [72, 76, 79], bell: 96 },
-  { pad: 52, notes: [71, 76, 79], bell: 95 },
-  { pad: 53, notes: [69, 72, 77], bell: 96 },
-  { pad: 55, notes: [71, 74, 79], bell: 98 }
-];
-const MUSIC_MELODY = [
-  null, 84, null, 88, null, 86, 81, null,
-  null, 83, 86, null, null, 90, null, 86,
-  null, 84, null, 88, 91, null, 88, null,
-  null, 81, 84, null, 89, null, 84, null,
-  null, 88, null, 84, null, 81, 84, null,
-  null, 83, null, 86, 91, null, 86, null,
-  null, 84, 89, null, null, 88, null, 84,
-  null, 86, null, 91, null, 90, 86, null
+  { pad: 53, notes: [69, 72, 77], bell: 93 }
 ];
 
 function midiFrequency(note) {
   return 440 * 2 ** ((note - 69) / 12);
 }
 
-function musicNoise({ at, duration, volume, frequency }) {
-  const context = ensureAudio();
-  const source = context.createBufferSource();
-  const filter = context.createBiquadFilter();
-  const gain = context.createGain();
-  source.buffer = ensureNoiseBuffer(context);
-  filter.type = 'bandpass';
-  filter.frequency.setValueAtTime(frequency, at);
-  filter.Q.value = 0.7;
-  gain.gain.setValueAtTime(0.0001, at);
-  gain.gain.exponentialRampToValueAtTime(volume, at + 0.003);
-  gain.gain.exponentialRampToValueAtTime(0.0001, at + duration);
-  source.connect(filter).connect(gain).connect(state.musicBus);
-  source.start(at, Math.random() * 0.16, duration);
-}
-
-function musicPluck(at, note, accent = false) {
-  const frequency = midiFrequency(note);
-  voice({
-    from: frequency * 1.012,
-    to: frequency,
-    duration: accent ? 0.24 : 0.18,
-    volume: accent ? 0.027 : 0.021,
-    type: 'triangle',
-    at,
-    destination: state.musicBus,
-    attack: 0.014
-  });
-  voice({
-    from: frequency * 2.018,
-    to: frequency * 2,
-    duration: 0.095,
-    volume: accent ? 0.007 : 0.0045,
-    type: 'sine',
-    at: at + 0.005,
-    destination: state.musicBus
-  });
-}
-
-function musicChord(at, notes, soft = false) {
+function musicChord(at, notes) {
   notes.forEach((note, index) => {
     const frequency = midiFrequency(note);
     voice({
       from: frequency * 1.006,
       to: frequency,
-      duration: soft ? 0.48 : 0.7,
-      volume: soft ? 0.0035 : 0.005,
+      duration: 3.4,
+      volume: 0.0032,
       type: 'sine',
-      at: at + index * 0.014,
+      at: at + index * 0.08,
       destination: state.musicBus,
-      attack: soft ? 0.07 : 0.11
+      attack: 0.65
     });
   });
 }
@@ -702,44 +983,20 @@ function musicPad(at, note) {
   voice({
     from: frequency * 1.006,
     to: frequency * 0.997,
-    duration: 0.92,
-    volume: 0.0065,
+    duration: 3.7,
+    volume: 0.0045,
     type: 'sine',
-    at: at + 0.035,
+    at: at + 0.15,
     destination: state.musicBus,
-    attack: 0.14
+    attack: 0.85
   });
 }
 
-function musicAir(at, brighter = false) {
-  musicNoise({ at, duration: 0.032, volume: brighter ? 0.003 : 0.0018, frequency: brighter ? 7600 : 6200 });
-}
-
-function musicBell(at, note, volume = 0.014) {
-  const frequency = midiFrequency(note);
-  voice({ from: frequency, to: frequency * 0.998, duration: 0.48, volume, type: 'sine', at, destination: state.musicBus, attack: 0.025 });
-  voice({ from: frequency * 2.01, to: frequency * 2, duration: 0.24, volume: volume * 0.36, type: 'triangle', at: at + 0.008, destination: state.musicBus, attack: 0.018 });
-}
-
 function scheduleMusicStep(step, at) {
-  const loopStep = step % MUSIC_MELODY.length;
-  const bar = Math.floor(loopStep / 8);
-  const beat = loopStep % 8;
-  const chord = MUSIC_CHORDS[bar];
-  const melodyNote = MUSIC_MELODY[loopStep];
-
-  if (melodyNote !== null) musicPluck(at, melodyNote, beat === 3 || beat === 5);
-
-  if (beat === 0) {
-    musicPad(at, chord.pad);
-    musicChord(at + 0.035, chord.notes);
-    if (bar % 2 === 0) musicBell(at + MUSIC_STEP_SECONDS * 2.55, chord.bell, 0.0065);
-  } else if (beat === 4) {
-    musicChord(at + 0.05, chord.notes, true);
-  }
-
-  if ((beat === 3 && bar % 3 !== 1) || (beat === 7 && bar % 2 === 1)) musicAir(at + 0.035, beat === 7);
-  if (bar >= 4 && beat === 5) musicBell(at + 0.025, chord.bell + 7, 0.005);
+  if (step % 8 !== 0) return;
+  const chord = MUSIC_CHORDS[Math.floor(step / 8) % MUSIC_CHORDS.length];
+  musicPad(at, chord.pad);
+  musicChord(at + 0.18, chord.notes);
 }
 
 function duckMusic(level = 0.3, duration = 0.36) {
@@ -759,6 +1016,12 @@ function stopMusic() {
   gain.cancelScheduledValues(now);
   gain.setValueAtTime(Math.max(0.0001, gain.value), now);
   gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+  if (state.musicSource) {
+    const source = state.musicSource;
+    state.musicSource = null;
+    try { source.stop(now + 0.09); }
+    catch { /* The source may already have ended. */ }
+  }
   syncAudioState();
 }
 
@@ -770,18 +1033,22 @@ function startMusic() {
   gain.exponentialRampToValueAtTime(MUSIC_BUS_GAIN, context.currentTime + 0.12);
   state.musicStep = 0;
   state.musicNext = context.currentTime + 0.08;
+  startSampledMusic();
   syncAudioState();
 }
 
 function updateMusic() {
   if (!state.sound || !state.running || !state.audio) return;
+  if (state.musicSource || state.mixAudioStatus !== 'fallback') {
+    syncAudioState();
+    return;
+  }
   const now = state.audio.currentTime;
   if (state.musicNext < now - MUSIC_STEP_SECONDS * 2) state.musicNext = now + 0.04;
   let scheduled = 0;
   while (state.musicNext < now + MUSIC_LOOKAHEAD && scheduled < 8) {
     scheduleMusicStep(state.musicStep, state.musicNext);
-    const swing = state.musicStep % 2 === 0 ? 1.06 : 0.94;
-    state.musicNext += MUSIC_STEP_SECONDS * swing;
+    state.musicNext += MUSIC_STEP_SECONDS;
     state.musicStep += 1;
     scheduled += 1;
   }
@@ -821,8 +1088,8 @@ function refreshHud() {
   ui.level.textContent = state.level + 1;
   ui.score.textContent = state.score.toString().padStart(6, '0');
   ui.timer.textContent = Math.max(0, Math.ceil(state.time));
-  ui.combo.textContent = state.combo.toString().padStart(2, '0');
-  ui.goal.textContent = LEVELS[state.level].goal.toString().padStart(2, '0');
+  ui.rounds.textContent = state.rounds.toString().padStart(2, '0');
+  ui.roundGoal.textContent = LEVELS[state.level].roundGoal.toString().padStart(2, '0');
   ui.lives.replaceChildren(...Array.from({ length: MAX_LIVES }, (_, index) => {
     const pip = document.createElement('i');
     pip.classList.toggle('lost', index >= state.lives);
@@ -832,8 +1099,9 @@ function refreshHud() {
   document.documentElement.dataset.gameState = JSON.stringify({
     level: state.level + 1,
     score: state.score,
-    combo: state.combo,
-    goal: LEVELS[state.level].goal,
+    rounds: state.rounds,
+    roundGoal: LEVELS[state.level].roundGoal,
+    tilesPerRound: TILES_PER_ROUND,
     levels: LEVELS.length,
     difficulty: LEVELS[state.level].difficulty,
     warningTime: LEVELS[state.level].warning,
@@ -848,9 +1116,12 @@ function refreshHud() {
     pendingLevelComplete: state.pendingLevelComplete,
     sound: state.sound,
     audioState: state.audio?.state ?? 'not-started',
-    musicStyle: 'airy-toybox-offbeat',
-    audioMix: 'character-priority',
-    musicTempo: MUSIC_TEMPO,
+    musicStyle: 'airy-beatless-sample',
+    musicPulse: 'none',
+    audioMix: 'lyric-led-character-priority',
+    musicTempo: 'free',
+    mixAudioStatus: state.mixAudioStatus,
+    mixAudioLoaded: Object.values(state.mixAudioBuffers).filter(Boolean).length,
     recentAudioEvents: state.audioEvents.slice(-12),
     characterMode: 'procedural-low-poly-3d',
     respawning: state.respawning,
@@ -873,16 +1144,20 @@ function clearBonus(tile) {
 
 const BONUS_DEFS = [
   { name: '金币', value: 180, color: 0xffd24a, emissive: 0x8a5c00, geometry: new THREE.CylinderGeometry(0.31, 0.31, 0.11, 10) },
-  { name: '蓝宝石', value: 320, color: 0x49b9ef, emissive: 0x06476d, geometry: new THREE.OctahedronGeometry(0.38, 0) },
+  { name: '蓝宝石', value: 320, color: 0x49b9ef, emissive: 0x06476d, geometry: new THREE.IcosahedronGeometry(0.37, 0) },
   { name: '红宝石', value: 520, color: 0xff5e73, emissive: 0x751629, geometry: new THREE.OctahedronGeometry(0.4, 0) },
   { name: '祖母绿', value: 760, color: 0x57cf83, emissive: 0x145f39, geometry: new THREE.DodecahedronGeometry(0.39, 0) },
-  { name: '钻石', value: 1050, color: 0xe9ffff, emissive: 0x3899ad, geometry: new THREE.OctahedronGeometry(0.43, 0) },
+  { name: '钻石', value: 1050, color: 0xe9ffff, emissive: 0x3899ad, geometry: new THREE.CylinderGeometry(0.42, 0.06, 0.44, 8) },
   { name: '金条', value: 1450, color: 0xffbd35, emissive: 0x8a4e00, geometry: new RoundedBoxGeometry(0.58, 0.24, 0.34, 1, 0.06) }
 ];
 
-function spawnBonus(rank = 0) {
+function spawnBonus(rank = 0, tileCount = null) {
+  if (!state.running || state.over) return;
   const candidates = tiles.filter((tile) => tile.userData.state === 'solid' && tile !== state.currentTile && !tile.userData.bonus);
-  if (!candidates.length) return;
+  if (!candidates.length) {
+    schedule(() => spawnBonus(rank, tileCount), 240);
+    return;
+  }
   const tile = candidates[Math.floor(Math.random() * candidates.length)];
   const definition = BONUS_DEFS[Math.min(BONUS_DEFS.length - 1, Math.max(0, rank))];
   const bonus = new THREE.Mesh(definition.geometry, lowPolyMaterial(definition.color, {
@@ -895,10 +1170,12 @@ function spawnBonus(rank = 0) {
     phase: Math.random() * Math.PI * 2,
     reward: definition.value,
     label: definition.name,
-    rank: BONUS_DEFS.indexOf(definition)
+    rank: BONUS_DEFS.indexOf(definition),
+    sourceTiles: tileCount
   };
   tile.add(bonus);
   tile.userData.bonus = bonus;
+  if (tileCount != null) showToast(`${tileCount} 格奖励 · ${definition.name}`);
 }
 
 function collectBonus(tile) {
@@ -914,18 +1191,22 @@ function startLevel(index) {
   cancelScheduled();
   clearEffects();
   state.level = index;
-  state.combo = 0;
+  state.rounds = 0;
   state.time = LEVELS[index].time;
   state.locked = false;
   state.transitionTimer = 0;
   state.pendingLevelComplete = false;
   state.lastTimeCue = null;
+  state.pendingRewards.clear();
   state.refillRemaining = 0;
   state.chain = 0;
   state.hitStop = 0;
   state.shake = 0;
+  state.landingAge = 0;
+  state.landingStrength = 0;
   state.respawning = false;
   state.invulnerable = 0;
+  resetJumpLyricPhrase();
   state.nextQueue = [];
   fillNextQueue();
   randomizeBoard();
@@ -934,6 +1215,7 @@ function startLevel(index) {
   player.rotation.set(0, Math.PI / 4, 0);
   mascot.rotation.set(0, 0, 0);
   mascot.position.y = 0;
+  leaf.rotation.z = -0.2;
   player.visible = true;
   player.scale.set(1, 1, 1);
   state.velocity.set(0, 0, 0);
@@ -943,13 +1225,13 @@ function startLevel(index) {
   state.queuedMove = null;
   state.falling = false;
   refreshHud();
-  schedule(spawnBonus, 450);
   showToast(`第 ${index + 1}/${LEVELS.length} 层 · ${LEVELS[index].name} · ${LEVELS[index].difficulty}`);
   sfx(index === 0 ? 'ready' : 'levelStart', { level: index });
 }
 
 function reset() {
   cancelScheduled();
+  stopMixCues();
   ensureAudio();
   if (state.sound) startMusic();
   state.running = true;
@@ -963,6 +1245,10 @@ function reset() {
   ui.intro.classList.remove('show');
   ui.result.classList.remove('show');
   startLevel(0);
+  if (tutorialPending && isMobileTutorialVisit() && (TUTORIAL_QUERY === '1' || !hasSeenTutorial())) {
+    tutorialPending = false;
+    showTutorial();
+  }
 }
 
 function finish(win, reason = '', outcome = 'gameOver') {
@@ -973,6 +1259,8 @@ function finish(win, reason = '', outcome = 'gameOver') {
   state.locked = true;
   state.queuedMove = null;
   pointerStart = null;
+  stopJumpLyric();
+  stopMixCues();
   stopMusic();
   $('#finalScore').textContent = state.score;
   $('#resultTag').textContent = win ? '全部通关' : '挑战结束';
@@ -1003,7 +1291,8 @@ function hopTo(rowDelta, colDelta, silentStart = false) {
     target,
     facing: Math.atan2(colDelta, rowDelta),
     elapsed: 0,
-    duration: HOP_DURATION
+    duration: HOP_DURATION,
+    fromScale: player.scale.clone()
   };
   state.currentTile = null;
   state.grounded = false;
@@ -1028,7 +1317,13 @@ function requestMove(rowDelta, colDelta, haptic = false, silentStart = false) {
 }
 
 function triggerMatch(tile) {
-  const group = connectedMatch(tile, true);
+  const group = connectedMatch(tile, true, true);
+  const bursting = group.filter((member) => member.userData.state === 'bursting');
+  if (bursting.length) {
+    const added = extendBurstingGroup(group, bursting);
+    if (added.length) showToast(`${added.length} 格接入爆破 · 继续撤离`);
+    return added.length ? group : [];
+  }
   const flashing = group.filter((member) => member.userData.state === 'warn');
   if (flashing.length) {
     const added = extendWarningGroup(group, flashing);
@@ -1063,6 +1358,52 @@ function extendWarningGroup(group, flashing) {
     member.userData.burstTotal = remaining;
     styleWarningTile(member);
   }
+  sfx('ignite', { chain: chainDepth });
+  return added;
+}
+
+function setBurstingTile(tile, timer, burstIndex, warningId, chainDepth) {
+  const data = tile.userData;
+  data.state = 'bursting';
+  data.warningId = warningId;
+  data.chainDepth = chainDepth;
+  data.timer = timer;
+  data.burstTotal = timer;
+  data.burstIndex = burstIndex;
+  data.bounceStrength = 0;
+  data.mainMat.emissive.setHex(0xffd75e);
+  data.topMat.emissive.setHex(0xffffff);
+  data.mainMat.emissiveIntensity = 1.1;
+  data.topMat.emissiveIntensity = 1.55;
+}
+
+function extendBurstingGroup(group, bursting) {
+  const added = group.filter((member) => member.userData.state === 'solid' || member.userData.state === 'warn');
+  if (!added.length) return [];
+  const chainDepth = Math.max(...bursting.map((member) => member.userData.chainDepth || 0));
+  const warningId = bursting[0].userData.warningId;
+  const pendingReward = state.pendingRewards.get(warningId);
+  if (pendingReward) pendingReward.tileCount += added.length;
+  else state.pendingRewards.set(warningId, { tileCount: bursting.filter((member) => member.userData.warningId === warningId).length + added.length });
+  const nextBurstIndex = Math.max(...bursting.map((member) => member.userData.burstIndex || 0)) + 1;
+  const activeRemaining = Math.max(...bursting.map((member) => Math.max(0, member.userData.timer)));
+  const escapeWindow = HOP_DURATION + 0.08;
+  const firstTimer = Math.max(escapeWindow, activeRemaining + EXPLOSION_TIMING.burstStagger);
+  for (const [index, member] of added.entries()) {
+    setBurstingTile(
+      member,
+      firstTimer + index * EXPLOSION_TIMING.burstStagger,
+      nextBurstIndex + index,
+      warningId,
+      chainDepth
+    );
+  }
+  const multiplier = chainDepth + 1;
+  const points = added.length * 50 * multiplier;
+  state.refillRemaining += added.length;
+  state.score += points;
+  refreshHud();
+  spawnShockwave(added, chainDepth);
   sfx('ignite', { chain: chainDepth });
   return added;
 }
@@ -1103,6 +1444,7 @@ function respawnPlayer() {
   player.scale.set(1, 1, 1);
   mascot.rotation.set(0, 0, 0);
   mascot.position.y = 0;
+  leaf.rotation.z = -0.2;
   state.velocity.set(0, 0, 0);
   state.currentTile = tile;
   state.grounded = true;
@@ -1111,6 +1453,8 @@ function respawnPlayer() {
   state.falling = false;
   state.respawning = false;
   state.invulnerable = 1.35;
+  state.landingAge = 0;
+  state.landingStrength = 0;
   state.locked = false;
   showToast('继续挑战');
   refreshHud();
@@ -1150,18 +1494,12 @@ function explodeGroup(group) {
   });
   for (const [index, tile] of ordered.entries()) {
     const distance = Math.hypot(tile.userData.row - centerRow, tile.userData.col - centerCol);
-    tile.userData.state = 'bursting';
-    tile.userData.timer = EXPLOSION_TIMING.burstBase
+    const timer = EXPLOSION_TIMING.burstBase
       + distance * EXPLOSION_TIMING.burstDistance
       + index * EXPLOSION_TIMING.burstStagger;
-    tile.userData.burstTotal = tile.userData.timer;
-    tile.userData.burstIndex = index;
-    tile.userData.bounceStrength = 0;
-    tile.userData.mainMat.emissive.setHex(0xffd75e);
-    tile.userData.topMat.emissive.setHex(0xffffff);
-    tile.userData.mainMat.emissiveIntensity = 1.1;
-    tile.userData.topMat.emissiveIntensity = 1.55;
+    setBurstingTile(tile, timer, index, tile.userData.warningId, chainDepth);
   }
+  state.pendingRewards.set(group[0].userData.warningId, { tileCount: group.length });
   spawnShockwave(group, chainDepth);
   state.hitStop = Math.min(0.085, 0.052 + chainDepth * 0.009);
   state.shake = Math.min(0.5, 0.16 + group.length * 0.021 + chainDepth * 0.055);
@@ -1171,14 +1509,10 @@ function explodeGroup(group) {
   const points = group.length * 50 * multiplier;
   state.chain = multiplier;
   state.refillRemaining += group.length;
-  state.combo += 1;
   state.score += points;
   refreshHud();
   showToast(chainDepth > 0 ? `连锁 ×${multiplier}  +${points}` : `爆破 +${points}`);
 
-  const rewardRank = Math.min(BONUS_DEFS.length - 1, chainDepth + (group.length >= 6 ? 1 : 0));
-  if (Math.random() < 0.72) schedule(() => spawnBonus(rewardRank), 850);
-  if (state.combo >= LEVELS[state.level].goal) state.pendingLevelComplete = true;
   if (playerCaught) loseLife('被爆炸卷走了', 'blast');
 }
 
@@ -1186,10 +1520,12 @@ function landOn(tile, silent = false) {
   player.position.set(tile.position.x, tile.position.y + PLAYER_BASE, tile.position.z);
   state.currentTile = tile;
   state.grounded = true;
+  state.landingAge = 0;
+  state.landingStrength = 1.05;
   collectBonus(tile);
   if (tile.userData.state === 'solid') {
     tile.userData.bounceAge = 0;
-    tile.userData.bounceStrength = 1;
+    tile.userData.bounceStrength = 1.15;
     applyColor(tile, (tile.userData.color + 1) % COLORS.length);
     if (!silent) sfx('land', { color: tile.userData.color });
     triggerMatch(tile);
@@ -1320,16 +1656,51 @@ function updatePlayer(delta, elapsed) {
   if (state.hop) {
     const hop = state.hop;
     const progress = Math.min(1, (hop.elapsed += delta) / hop.duration);
-    const ease = progress * progress * (3 - 2 * progress);
-    const arc = Math.sin(Math.PI * progress);
-    player.position.x = THREE.MathUtils.lerp(hop.fromX, hop.toX, ease);
-    player.position.z = THREE.MathUtils.lerp(hop.fromZ, hop.toZ, ease);
-    player.position.y = PLAYER_BASE + arc * 1.42;
-    player.scale.set(1 - arc * 0.08, 1 + arc * 0.12, 1);
-    mascot.rotation.x = -arc * 0.14;
+    const anticipationProgress = Math.min(1, progress / HOP_ANTICIPATION);
+    const flightProgress = THREE.MathUtils.clamp(
+      (progress - HOP_ANTICIPATION) / (HOP_FLIGHT_END - HOP_ANTICIPATION),
+      0,
+      1
+    );
+    const landingProgress = THREE.MathUtils.clamp(
+      (progress - HOP_FLIGHT_END) / (1 - HOP_FLIGHT_END),
+      0,
+      1
+    );
+    const anticipationEase = anticipationProgress * anticipationProgress * (3 - 2 * anticipationProgress);
+    const travelEase = flightProgress * flightProgress * (3 - 2 * flightProgress);
+    const landingEase = landingProgress * landingProgress * (3 - 2 * landingProgress);
+    const inFlight = progress >= HOP_ANTICIPATION && progress < HOP_FLIGHT_END;
+    const arc = inFlight ? Math.sin(Math.PI * flightProgress) : 0;
+
+    player.position.x = THREE.MathUtils.lerp(hop.fromX, hop.toX, travelEase);
+    player.position.z = THREE.MathUtils.lerp(hop.fromZ, hop.toZ, travelEase);
+    player.position.y = PLAYER_BASE + arc * HOP_HEIGHT;
+
+    let widthScale;
+    let heightScale;
+    if (progress < HOP_ANTICIPATION) {
+      widthScale = THREE.MathUtils.lerp(hop.fromScale.x, 1.2, anticipationEase);
+      heightScale = THREE.MathUtils.lerp(hop.fromScale.y, 0.7, anticipationEase);
+    } else if (inFlight) {
+      const velocityStretch = Math.abs(Math.cos(Math.PI * flightProgress));
+      const flightWidth = 1 - velocityStretch * 0.08 - arc * 0.03;
+      const flightHeight = 1 + velocityStretch * 0.18 + arc * 0.08;
+      const launchProgress = Math.min(1, flightProgress / 0.22);
+      const launchEase = launchProgress * launchProgress * (3 - 2 * launchProgress);
+      widthScale = THREE.MathUtils.lerp(1.2, flightWidth, launchEase);
+      heightScale = THREE.MathUtils.lerp(0.7, flightHeight, launchEase);
+    } else {
+      widthScale = THREE.MathUtils.lerp(0.92, 1.2, landingEase);
+      heightScale = THREE.MathUtils.lerp(1.18, 0.7, landingEase);
+    }
+    player.scale.set(widthScale, heightScale, widthScale);
+    mascot.position.y = -Math.max(0, 1 - heightScale) * 0.16;
+    mascot.rotation.x = -arc * 0.16;
+    leaf.rotation.z = -0.2 - arc * 0.18 + landingEase * 0.08;
     if (progress >= 1) {
       state.hop = null;
-      player.scale.set(1.14, 0.78, 1);
+      player.scale.set(1.2, 0.7, 1.2);
       if (canLand(hop.target)) {
         const queuedMove = state.queuedMove;
         state.queuedMove = null;
@@ -1351,9 +1722,20 @@ function updatePlayer(delta, elapsed) {
     player.rotation.z += delta * 1.35;
     player.scale.lerp(new THREE.Vector3(1, 1, 1), 0.14);
   } else {
-    player.scale.lerp(new THREE.Vector3(1, 1, 1), 0.2);
+    if (state.landingStrength > 0.015) {
+      state.landingAge += delta;
+      state.landingStrength *= Math.exp(-7.2 * delta);
+      const spring = Math.cos(state.landingAge * 25) * state.landingStrength;
+      player.scale.set(1 + spring * 0.11, 1 - spring * 0.19, 1 + spring * 0.11);
+      mascot.position.y = -Math.max(0, spring) * 0.07;
+    } else {
+      state.landingStrength = 0;
+      const settle = 1 - Math.exp(-18 * delta);
+      player.scale.lerp(new THREE.Vector3(1, 1, 1), settle);
+      mascot.position.y = Math.sin(elapsed * 3.4) * 0.025;
+    }
     mascot.rotation.x = THREE.MathUtils.lerp(mascot.rotation.x, 0, 0.16);
-    mascot.position.y = Math.sin(elapsed * 3.4) * 0.025;
+    leaf.rotation.z = THREE.MathUtils.lerp(leaf.rotation.z, -0.2, 1 - Math.exp(-16 * delta));
   }
   if (player.position.y < -7 && state.falling) {
     if (state.respawning) player.visible = false;
@@ -1365,9 +1747,9 @@ function updateTileBounce(tile, delta) {
   const data = tile.userData;
   if (data.bounceStrength > 0.015) {
     data.bounceAge += delta;
-    data.bounceStrength *= Math.exp(-4.8 * delta);
-    const wave = Math.cos(data.bounceAge * 17) * data.bounceStrength;
-    tile.scale.set(1 + wave * 0.065, 1 - wave * 0.13, 1 + wave * 0.065);
+    data.bounceStrength *= Math.exp(-4.2 * delta);
+    const wave = Math.cos(data.bounceAge * 19) * data.bounceStrength;
+    tile.scale.set(1 + wave * 0.075, 1 - wave * 0.16, 1 + wave * 0.075);
     return;
   }
   data.bounceStrength = 0;
@@ -1397,6 +1779,8 @@ function updateTiles(delta, elapsed) {
       data.mainMat.emissiveIntensity = 1.1 + squeeze * 0.75;
       data.topMat.emissiveIntensity = 1.55 + squeeze * 0.65;
       if (data.timer <= 0) {
+        const playerCaught = !state.respawning && state.invulnerable <= 0
+          && state.grounded && state.currentTile === tile;
         clearBonus(tile);
         spawnBurst(tile);
         data.state = 'falling';
@@ -1405,6 +1789,7 @@ function updateTiles(delta, elapsed) {
         data.mainMat.emissiveIntensity = 0;
         data.topMat.emissiveIntensity = 0;
         sfx('tilePop', { index: data.burstIndex, chain: data.chainDepth });
+        if (playerCaught) loseLife('被爆破卷走了', 'blast');
       }
     } else if (data.state === 'falling') {
       data.vy -= 9 * delta;
@@ -1469,6 +1854,18 @@ function updateTiles(delta, elapsed) {
     const group = tiles.filter((tile) => tile.userData.state === 'warn' && tile.userData.warningId === warningId);
     explodeGroup(group);
   }
+  for (const [warningId, reward] of state.pendingRewards) {
+    const stillBursting = tiles.some((tile) => tile.userData.state === 'bursting' && tile.userData.warningId === warningId);
+    if (stillBursting) continue;
+    state.pendingRewards.delete(warningId);
+    const gainedRounds = roundsForTileCount(reward.tileCount);
+    state.rounds += gainedRounds;
+    if (state.rounds >= LEVELS[state.level].roundGoal) state.pendingLevelComplete = true;
+    refreshHud();
+    showToast(`${reward.tileCount} 格爆破 · +${gainedRounds} 回`);
+    const rewardRank = rewardRankForTileCount(reward.tileCount);
+    if (rewardRank >= 0) schedule(() => spawnBonus(rewardRank, reward.tileCount), 240);
+  }
   if (QA_MODE) {
     renderer.domElement.dataset.qaState = JSON.stringify({
       player: state.currentTile ? [state.currentTile.userData.row, state.currentTile.userData.col] : null,
@@ -1479,7 +1876,10 @@ function updateTiles(delta, elapsed) {
       warningTime: LEVELS[state.level].warning,
       hopDuration: HOP_DURATION,
       heldMoveInterval: HELD_MOVE_INTERVAL,
-      explosionTiming: EXPLOSION_TIMING
+      cameraDistance: Number(camera.position.distanceTo(cameraTarget).toFixed(2)),
+      cameraTargetX: Number(cameraTarget.x.toFixed(2)),
+      explosionTiming: EXPLOSION_TIMING,
+      rewardThresholds: REWARD_TILE_THRESHOLDS
     });
   }
 }
@@ -1541,7 +1941,7 @@ function beginLevelTransitionWhenSafe() {
   if (boardBusy || state.hop || state.falling || !state.grounded) return;
   state.pendingLevelComplete = false;
   state.locked = true;
-  state.transitionTimer = 1.2;
+  state.transitionTimer = 1.55;
   showToast(`第 ${state.level + 1} 层完成`);
   sfx('levelClear');
 }
@@ -1597,13 +1997,14 @@ function update(delta, elapsed) {
 const cameraTarget = new THREE.Vector3(0, -0.1, 0);
 function updateCamera(delta) {
   const compact = innerWidth < 760;
+  cameraTarget.x = compact ? MOBILE_CAMERA_TARGET_X : 0;
   const targetFov = compact ? 49 : 43;
   if (camera.fov !== targetFov) {
     camera.fov = targetFov;
     camera.updateProjectionMatrix();
   }
   const distance = compact
-    ? 18 / Math.min(camera.aspect, 1)
+    ? MOBILE_CAMERA_DISTANCE / Math.min(camera.aspect, 1)
     : camera.aspect < 1
       ? 23
       : camera.aspect < 1.2
@@ -1641,6 +2042,8 @@ $('#sound').addEventListener('click', (event) => {
     if (state.running) startMusic();
     sfx('toggle');
   } else {
+    stopJumpLyric();
+    stopMixCues();
     stopMusic();
   }
   syncAudioState();
@@ -1655,17 +2058,23 @@ addEventListener('resize', () => {
 });
 
 window.__bounceGrid = {
+  roundsForTileCount,
   getState: () => ({
     level: state.level + 1,
     score: state.score,
-    combo: state.combo,
-    goal: LEVELS[state.level].goal,
+    rounds: state.rounds,
+    roundGoal: LEVELS[state.level].roundGoal,
+    tilesPerRound: TILES_PER_ROUND,
     levels: LEVELS.length,
     difficulty: LEVELS[state.level].difficulty,
     warningTime: LEVELS[state.level].warning,
     hopDuration: HOP_DURATION,
     heldMoveInterval: HELD_MOVE_INTERVAL,
+    mobileCameraDistance: MOBILE_CAMERA_DISTANCE,
+    mobileCameraTargetX: MOBILE_CAMERA_TARGET_X,
     explosionTiming: { ...EXPLOSION_TIMING },
+    rewardThresholds: [...REWARD_TILE_THRESHOLDS],
+    pendingRewards: [...state.pendingRewards.values()].map(({ tileCount }) => tileCount),
     time: state.time,
     lives: state.lives,
     refill: state.refillRemaining,
@@ -1674,10 +2083,18 @@ window.__bounceGrid = {
     sound: state.sound,
     inputMode: innerWidth <= 900 ? 'swipe' : 'keyboard-click-or-swipe',
     audioState: state.audio?.state ?? 'not-started',
-    musicStyle: 'airy-toybox-offbeat',
-    audioMix: 'character-priority',
-    musicTempo: MUSIC_TEMPO,
+    musicStyle: 'airy-beatless-sample',
+    musicPulse: 'none',
+    audioMix: 'lyric-led-character-priority',
+    musicTempo: 'free',
+    mixAudioStatus: state.mixAudioStatus,
+    mixAudioLoaded: Object.values(state.mixAudioBuffers).filter(Boolean).length,
     musicStep: state.musicStep,
+    jumpLyricLoaded: state.jumpLyricBuffers.filter(Boolean).length,
+    jumpLyricNextIndex: state.jumpLyricIndex,
+    jumpLyricNext: JUMP_LYRIC_TEXT[state.jumpLyricIndex],
+    jumpLyricPhrase: JUMP_LYRIC_PHRASE,
+    jumpLyricResetGap: JUMP_LYRIC_RESET_GAP,
     recentAudioEvents: state.audioEvents.slice(-12),
     characterMode: 'procedural-low-poly-3d',
     matchRule: 'orthogonal-connected-4',
