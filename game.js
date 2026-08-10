@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { EXPLOSION_TIMING, LEVELS, REWARD_TILE_THRESHOLDS, TILES_PER_ROUND, TILE_COLORS, rewardRankForTileCount, roundsForTileCount } from './game-config.mjs?v=83';
-import { orthogonalComponent } from './game-rules.mjs?v=83';
+import { EXPLOSION_TIMING, LEVELS, REWARD_TILE_THRESHOLDS, TILES_PER_ROUND, TILE_COLORS, rewardRankForTileCount, roundsForTileCount } from './game-config.mjs?v=85';
+import { orthogonalComponent } from './game-rules.mjs?v=85';
 
 const $ = (selector) => document.querySelector(selector);
 const QA_MODE = new URLSearchParams(location.search).has('qa');
@@ -149,33 +149,23 @@ const HOP_HEIGHT = 1.5;
 const HELD_MOVE_INTERVAL = 235;
 const MOBILE_CAMERA_DISTANCE = 15.6;
 const MOBILE_CAMERA_TARGET_X = -0.38;
-const JUMP_LYRIC_FILES = [
-  'assets/audio/jump-lyrics/01-wo.wav',
-  'assets/audio/jump-lyrics/02-shi.wav',
-  'assets/audio/jump-lyrics/03-yi.wav',
-  'assets/audio/jump-lyrics/04-ke.wav',
-  'assets/audio/jump-lyrics/05-xiao.wav',
-  'assets/audio/jump-lyrics/06-ping.wav',
-  'assets/audio/jump-lyrics/07-guo.wav',
-  'assets/audio/jump-lyrics/08-jiu.wav',
-  'assets/audio/jump-lyrics/09-ai.wav',
-  'assets/audio/jump-lyrics/10-tiao.wav',
-  'assets/audio/jump-lyrics/11-tiao.wav',
-  'assets/audio/jump-lyrics/12-le.wav'
-];
-const JUMP_LYRIC_TEXT = ['我', '是', '一', '颗', '小', '苹', '果', '就', '爱', '跳', '跳', '乐'];
+const JUMP_LYRIC_FILE = 'assets/audio/jump-lyrics-v85/happyjump-apple-continuous-master.wav';
+const JUMP_LYRIC_TEXT = ['我', '是', '一', '个', '小', '苹', '果', '每', '天', '就', '爱', '跳', '跳', '乐'];
 const JUMP_LYRIC_PHRASE = JUMP_LYRIC_TEXT.join('');
 const JUMP_LYRIC_RESET_GAP = 900;
 const JUMP_LYRIC_BUS_GAIN = 0.7;
+const JUMP_LYRIC_TRIGGER_INTERVAL = HELD_MOVE_INTERVAL / 1000;
+const JUMP_LYRIC_CROSSFADE = 0.045;
+const JUMP_LYRIC_LEGATO_GAP = 0.52;
 const MIX_AUDIO_FILES = Object.freeze({
-  bgm: 'assets/audio/mix-v83/happyjump-bgm-airy-loop.wav',
-  levelClear: 'assets/audio/mix-v83/happyjump-level-clear.wav',
-  fullClear: 'assets/audio/mix-v83/happyjump-full-clear.wav',
-  lifeLost: 'assets/audio/mix-v83/happyjump-life-lost.wav',
-  gameOver: 'assets/audio/mix-v83/happyjump-game-over.wav',
-  timeout: 'assets/audio/mix-v83/happyjump-timeout.wav'
+  bgm: 'assets/audio/mix-v84/happyjump-bgm-cute-toy-loop.wav',
+  levelClear: 'assets/audio/mix-v84/happyjump-level-clear.wav',
+  fullClear: 'assets/audio/mix-v84/happyjump-full-clear.wav',
+  lifeLost: 'assets/audio/mix-v84/happyjump-life-lost.wav',
+  gameOver: 'assets/audio/mix-v84/happyjump-game-over.wav',
+  timeout: 'assets/audio/mix-v84/happyjump-timeout.wav'
 });
-const MIX_CUE_GAINS = Object.freeze({ levelClear: 0.46, fullClear: 0.48, lifeLost: 0.38, gameOver: 0.42, timeout: 0.4 });
+const MIX_CUE_GAINS = Object.freeze({ levelClear: 0.5, fullClear: 0.52, lifeLost: 0.44, gameOver: 0.46, timeout: 0.44 });
 const COLOR_DEFS = TILE_COLORS;
 const COLORS = COLOR_DEFS.map((item) => item.hex);
 const MAX_LIVES = 3;
@@ -461,16 +451,16 @@ function clearEffects() {
   shockwaves.length = 0;
 }
 
-const MUSIC_BUS_GAIN = 0.34;
-const jumpLyricFetches = JUMP_LYRIC_FILES.map(async (url) => {
+const MUSIC_BUS_GAIN = 0.3;
+const jumpLyricFetch = (async () => {
   try {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`Unable to load jump lyric: ${url}`);
+    const response = await fetch(JUMP_LYRIC_FILE);
+    if (!response.ok) throw new Error(`Unable to load jump lyric: ${JUMP_LYRIC_FILE}`);
     return { data: await response.arrayBuffer(), error: null };
   } catch (error) {
     return { data: null, error };
   }
-});
+})();
 const mixAudioFetches = Object.entries(MIX_AUDIO_FILES).map(async ([name, url]) => {
   try {
     const response = await fetch(url);
@@ -525,11 +515,11 @@ const state = {
   lastTimeCue: null,
   landingAge: 0,
   landingStrength: 0,
-  jumpLyricBuffers: [],
+  jumpLyricBuffer: null,
   jumpLyricLoad: null,
   jumpLyricIndex: 0,
   jumpLyricLastAt: -Infinity,
-  activeJumpLyricSource: null,
+  activeJumpLyricSources: new Set(),
   audioEvents: []
 };
 
@@ -575,7 +565,7 @@ function ensureAudio() {
     state.musicBus.gain.value = MUSIC_BUS_GAIN;
     state.musicFilter = state.audio.createBiquadFilter();
     state.musicFilter.type = 'highpass';
-    state.musicFilter.frequency.value = 210;
+    state.musicFilter.frequency.value = 145;
     state.musicFilter.Q.value = 0.45;
     state.musicBus.connect(state.musicFilter).connect(compressor);
   }
@@ -587,31 +577,32 @@ function ensureAudio() {
 
 function syncJumpLyricState(status = null) {
   document.documentElement.dataset.jumpLyrics = status
-    ?? (state.jumpLyricBuffers.length === JUMP_LYRIC_FILES.length ? 'ready' : state.jumpLyricLoad ? 'loading' : 'not-started');
-  document.documentElement.dataset.jumpLyricLoaded = String(state.jumpLyricBuffers.filter(Boolean).length);
+    ?? (state.jumpLyricBuffer ? 'ready' : state.jumpLyricLoad ? 'loading' : 'not-started');
+  document.documentElement.dataset.jumpLyricLoaded = String(state.jumpLyricBuffer ? 1 : 0);
   document.documentElement.dataset.jumpLyricNext = JUMP_LYRIC_TEXT[state.jumpLyricIndex] ?? JUMP_LYRIC_TEXT[0];
   document.documentElement.dataset.jumpLyricPhrase = JUMP_LYRIC_PHRASE;
+  document.documentElement.dataset.jumpLyricMode = 'continuous-master-crossfade';
+  document.documentElement.dataset.jumpLyricCrossfade = String(JUMP_LYRIC_CROSSFADE);
 }
 
 function loadJumpLyrics(context) {
   if (state.jumpLyricLoad) return state.jumpLyricLoad;
   syncJumpLyricState('loading');
-  state.jumpLyricLoad = Promise.all(jumpLyricFetches)
-    .then((files) => {
-      const failed = files.find(({ error }) => error);
-      if (failed) throw failed.error;
-      return Promise.all(files.map(({ data }) => context.decodeAudioData(data.slice(0))));
+  state.jumpLyricLoad = jumpLyricFetch
+    .then(({ data, error }) => {
+      if (error || !data) throw error ?? new Error('Jump lyric master is empty.');
+      return context.decodeAudioData(data.slice(0));
     })
-    .then((buffers) => {
-      state.jumpLyricBuffers = buffers;
+    .then((buffer) => {
+      state.jumpLyricBuffer = buffer;
       syncJumpLyricState('ready');
-      return buffers;
+      return buffer;
     })
     .catch((error) => {
-      console.warn('Jump lyric audio could not be loaded; using synthesized bounce sounds.', error);
-      state.jumpLyricBuffers = [];
+      console.warn('Continuous jump lyric master could not be loaded; using synthesized bounce sounds.', error);
+      state.jumpLyricBuffer = null;
       syncJumpLyricState('fallback');
-      return [];
+      return null;
     });
   return state.jumpLyricLoad;
 }
@@ -691,61 +682,86 @@ function startSampledMusic() {
   };
   source.start();
   state.musicSource = source;
-  state.audioEvents.push({ name: 'musicStart', style: 'airy-beatless-sample', at: Math.round(performance.now()) });
+  state.audioEvents.push({ name: 'musicStart', style: 'cute-toy-lyric-safe-sample', at: Math.round(performance.now()) });
   if (state.audioEvents.length > 32) state.audioEvents.shift();
   return true;
 }
 
-function stopJumpLyric() {
-  if (!state.activeJumpLyricSource) return;
-  try { state.activeJumpLyricSource.stop(); }
-  catch { /* The source may already have ended. */ }
-  state.activeJumpLyricSource.disconnect();
-  state.activeJumpLyricSource = null;
+function stopJumpLyrics() {
+  for (const entry of state.activeJumpLyricSources) {
+    try { entry.source.stop(); }
+    catch { /* The source may already have ended. */ }
+    entry.source.disconnect();
+    entry.gain.disconnect();
+  }
+  state.activeJumpLyricSources.clear();
 }
 
 function resetJumpLyricPhrase() {
-  stopJumpLyric();
+  stopJumpLyrics();
   state.jumpLyricIndex = 0;
   state.jumpLyricLastAt = -Infinity;
+  document.documentElement.dataset.jumpLyricLegato = 'false';
   syncJumpLyricState();
 }
 
 function playJumpLyric() {
   if (!state.sound) return false;
   const context = ensureAudio();
-  if (state.jumpLyricBuffers.length !== JUMP_LYRIC_FILES.length || !state.lyricBus) return false;
+  const buffer = state.jumpLyricBuffer;
+  if (!buffer || !state.lyricBus) return false;
 
   const now = performance.now();
-  if (now - state.jumpLyricLastAt > JUMP_LYRIC_RESET_GAP) state.jumpLyricIndex = 0;
+  const elapsed = now - state.jumpLyricLastAt;
+  if (elapsed > JUMP_LYRIC_RESET_GAP) {
+    state.jumpLyricIndex = 0;
+    stopJumpLyrics();
+  }
   const index = state.jumpLyricIndex;
-  const buffer = state.jumpLyricBuffers[index];
-  if (!buffer) return false;
-
-  stopJumpLyric();
+  const sourceSlot = buffer.duration / JUMP_LYRIC_TEXT.length;
+  const offset = Math.min(buffer.duration - 0.001, index * sourceSlot);
+  const duration = Math.min(buffer.duration - offset, JUMP_LYRIC_TRIGGER_INTERVAL + JUMP_LYRIC_CROSSFADE);
+  const legato = elapsed <= JUMP_LYRIC_LEGATO_GAP * 1000;
+  document.documentElement.dataset.jumpLyricLegato = String(legato);
+  const overlapProgress = legato
+    ? Math.min(1, Math.max(0, (elapsed / 1000 - JUMP_LYRIC_TRIGGER_INTERVAL) / JUMP_LYRIC_CROSSFADE))
+    : 0;
+  const fadeIn = Math.min(duration * 0.3, legato ? JUMP_LYRIC_CROSSFADE * (1 - overlapProgress) : 0.006);
+  const fadeInStart = legato ? Math.max(0.0001, overlapProgress) : 0.0001;
+  const fadeOut = Math.min(JUMP_LYRIC_CROSSFADE, duration * 0.28);
   const source = context.createBufferSource();
+  const gain = context.createGain();
   source.buffer = buffer;
-  source.connect(state.lyricBus);
+  source.connect(gain).connect(state.lyricBus);
+  const start = context.currentTime;
+  const fadeOutAt = Math.max(start + fadeIn, start + duration - fadeOut);
+  gain.gain.setValueAtTime(fadeInStart, start);
+  gain.gain.linearRampToValueAtTime(1, start + fadeIn);
+  gain.gain.setValueAtTime(1, fadeOutAt);
+  gain.gain.linearRampToValueAtTime(0.0001, start + duration);
+  const entry = { source, gain };
+  state.activeJumpLyricSources.add(entry);
   source.onended = () => {
-    if (state.activeJumpLyricSource === source) state.activeJumpLyricSource = null;
+    state.activeJumpLyricSources.delete(entry);
     source.disconnect();
+    gain.disconnect();
   };
-  source.start();
-  state.activeJumpLyricSource = source;
+  source.start(start, offset, duration);
   state.jumpLyricIndex = (index + 1) % JUMP_LYRIC_TEXT.length;
   state.jumpLyricLastAt = now;
-  state.audioEvents.push({ name: 'jumpLyric', lyric: JUMP_LYRIC_TEXT[index], lyricIndex: index, at: Math.round(now) });
+  state.audioEvents.push({ name: 'jumpLyric', lyric: JUMP_LYRIC_TEXT[index], lyricIndex: index, legato, at: Math.round(now) });
   if (state.audioEvents.length > 32) state.audioEvents.shift();
-  duckMusic(0.42, 0.28);
+  duckMusic(0.34, 0.3);
   syncJumpLyricState('ready');
   return true;
 }
 
 function syncAudioState() {
   document.documentElement.dataset.audioState = state.audio?.state ?? 'not-started';
-  document.documentElement.dataset.musicStyle = 'airy-beatless-sample';
+  document.documentElement.dataset.musicStyle = 'cute-toy-lyric-safe-sample';
   document.documentElement.dataset.musicPulse = 'none';
   document.documentElement.dataset.audioMix = 'lyric-led-character-priority';
+  document.documentElement.dataset.musicPalette = 'toy-piano-marimba-kalimba';
   document.documentElement.dataset.mixAudio = state.mixAudioStatus;
   document.documentElement.dataset.mixAudioLoaded = String(Object.values(state.mixAudioBuffers).filter(Boolean).length);
   document.documentElement.dataset.musicTempo = 'free';
@@ -1116,7 +1132,7 @@ function refreshHud() {
     pendingLevelComplete: state.pendingLevelComplete,
     sound: state.sound,
     audioState: state.audio?.state ?? 'not-started',
-    musicStyle: 'airy-beatless-sample',
+    musicStyle: 'cute-toy-lyric-safe-sample',
     musicPulse: 'none',
     audioMix: 'lyric-led-character-priority',
     musicTempo: 'free',
@@ -1259,7 +1275,7 @@ function finish(win, reason = '', outcome = 'gameOver') {
   state.locked = true;
   state.queuedMove = null;
   pointerStart = null;
-  stopJumpLyric();
+  stopJumpLyrics();
   stopMixCues();
   stopMusic();
   $('#finalScore').textContent = state.score;
@@ -2042,7 +2058,7 @@ $('#sound').addEventListener('click', (event) => {
     if (state.running) startMusic();
     sfx('toggle');
   } else {
-    stopJumpLyric();
+    stopJumpLyrics();
     stopMixCues();
     stopMusic();
   }
@@ -2083,14 +2099,16 @@ window.__bounceGrid = {
     sound: state.sound,
     inputMode: innerWidth <= 900 ? 'swipe' : 'keyboard-click-or-swipe',
     audioState: state.audio?.state ?? 'not-started',
-    musicStyle: 'airy-beatless-sample',
+    musicStyle: 'cute-toy-lyric-safe-sample',
     musicPulse: 'none',
     audioMix: 'lyric-led-character-priority',
     musicTempo: 'free',
     mixAudioStatus: state.mixAudioStatus,
     mixAudioLoaded: Object.values(state.mixAudioBuffers).filter(Boolean).length,
     musicStep: state.musicStep,
-    jumpLyricLoaded: state.jumpLyricBuffers.filter(Boolean).length,
+    jumpLyricLoaded: state.jumpLyricBuffer ? 1 : 0,
+    jumpLyricMode: 'continuous-master-crossfade',
+    jumpLyricCrossfade: JUMP_LYRIC_CROSSFADE,
     jumpLyricNextIndex: state.jumpLyricIndex,
     jumpLyricNext: JUMP_LYRIC_TEXT[state.jumpLyricIndex],
     jumpLyricPhrase: JUMP_LYRIC_PHRASE,
