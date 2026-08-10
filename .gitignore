@@ -1,2 +1,5 @@
 .DS_Store
 .codegraph/
+
+# Preview files
+.preview
