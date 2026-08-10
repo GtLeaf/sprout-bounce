@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { orthogonalComponent } from './game-rules.mjs?v=51';
+import { orthogonalComponent } from './game-rules.mjs?v=53';
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -1601,7 +1601,7 @@ function updateCamera(delta) {
         : compact
           ? 20
           : 18.2;
-  const direction = new THREE.Vector3(0.72, 0.82, 0.9).normalize().multiplyScalar(distance);
+  const direction = new THREE.Vector3(0.82, 1.02, 0.82).normalize().multiplyScalar(distance);
   const desired = cameraTarget.clone().add(direction);
   if (state.shake > 0) {
     desired.x += (Math.random() - 0.5) * state.shake;

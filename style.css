@@ -158,8 +158,8 @@ button { border: 0; font: inherit; letter-spacing: 0; }
 .icon-button {
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   padding: 0;
   border-radius: 50%;
   background: rgba(245, 241, 231, 0.88);
@@ -482,7 +482,7 @@ button { border: 0; font: inherit; letter-spacing: 0; }
   .stats > div { padding: 0 7px; }
   .stats strong { font-size: 21px; }
   .next-panel { height: 44px; }
-  .icon-button { width: 40px; height: 40px; }
+  .icon-button { width: 44px; height: 44px; }
   .move-pad { display: grid; }
 }
 
@@ -499,7 +499,7 @@ button { border: 0; font: inherit; letter-spacing: 0; }
   .next-panel > span { display: none; }
   .next-cubes { min-width: 0; gap: 3px; }
   .next-cubes i { width: 12px; height: 12px; border-radius: 4px; }
-  .icon-button { width: 38px; height: 38px; }
+  .icon-button { width: 42px; height: 42px; }
   .combo { left: 13px; bottom: 14px; min-width: 104px; padding: 10px 13px 9px; }
   .combo strong { font-size: 32px; }
   .combo b { font-size: 16px; }
@@ -528,7 +528,7 @@ button { border: 0; font: inherit; letter-spacing: 0; }
   .next-panel { width: 66px; padding-left: 6px; padding-right: 6px; }
   .next-cubes { gap: 2px; }
   .next-cubes i { width: 11px; height: 11px; }
-  .icon-button { width: 36px; height: 36px; }
+  .icon-button { width: 42px; height: 42px; }
   .intro-copy { width: min(288px, calc(100vw - 32px)); margin-left: 16px; }
   .move-pad {
     right: 8px;
