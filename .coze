@@ -1,0 +1,11 @@
+[project]
+entrypoint = "index.html"
+requires = ["nodejs-24"]
+
+[dev]
+build = ["echo", "no-build"]
+run = ["node", "serve.mjs"]
+
+[deploy]
+build = ["echo", "no-build"]
+run = ["node", "serve.mjs"]
