@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { orthogonalComponent } from './game-rules.mjs?v=53';
+import { EXPLOSION_TIMING, LEVELS, TILE_COLORS } from './game-config.mjs?v=69';
+import { orthogonalComponent } from './game-rules.mjs?v=65';
 
 const $ = (selector) => document.querySelector(selector);
+const QA_MODE = new URLSearchParams(location.search).has('qa');
 
 const ui = {
   intro: $('#intro'), result: $('#result'), level: $('#level'), score: $('#score'),
@@ -41,20 +43,10 @@ const SIZE = 1.45;
 const GAP = 0.10;
 const STEP = SIZE + GAP;
 const PLAYER_BASE = 0.43;
-const COLOR_DEFS = [
-  { name: '橙', hex: 0xffa144 },
-  { name: '黄', hex: 0xffd24a },
-  { name: '绿', hex: 0x8bd34b },
-  { name: '蓝', hex: 0x45b8e6 },
-  { name: '粉', hex: 0xf397c8 },
-  { name: '红', hex: 0xff7166 }
-];
+const HOP_DURATION = 0.25;
+const HELD_MOVE_INTERVAL = 235;
+const COLOR_DEFS = TILE_COLORS;
 const COLORS = COLOR_DEFS.map((item) => item.hex);
-const LEVELS = [
-  { name: '热身层', time: 90, goal: 4 },
-  { name: '加速层', time: 80, goal: 6 },
-  { name: '风暴层', time: 72, goal: 8 }
-];
 const MAX_LIVES = 3;
 
 const lowPolyMaterial = (color, options = {}) => new THREE.MeshStandardMaterial({
@@ -116,8 +108,8 @@ scene.add(baseGroup);
 
 const tiles = [];
 const tileMeshes = [];
-const tileGeometry = new RoundedBoxGeometry(SIZE, 0.72, SIZE, 1, 0.13);
-const topGeometry = new RoundedBoxGeometry(SIZE - 0.15, 0.09, SIZE - 0.15, 1, 0.08);
+const tileGeometry = new RoundedBoxGeometry(SIZE, 0.72, SIZE, 3, 0.23);
+const topGeometry = new RoundedBoxGeometry(SIZE - 0.12, 0.1, SIZE - 0.12, 2, 0.16);
 const tileHighlightGeometry = new RoundedBoxGeometry(0.36, 0.025, 0.075, 1, 0.025);
 const tileHighlightMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.24, depthWrite: false });
 
@@ -125,8 +117,8 @@ function applyColor(tile, index) {
   const data = tile.userData;
   data.color = index;
   const baseColor = new THREE.Color(COLORS[index]);
-  data.mainMat.color.copy(baseColor);
-  data.topMat.color.copy(baseColor).offsetHSL(0, -0.005, 0.045);
+  data.mainMat.color.copy(baseColor).offsetHSL(0, 0.025, -0.035);
+  data.topMat.color.copy(baseColor).offsetHSL(0, 0.025, 0.028);
   data.mainMat.emissive.setHex(0x000000);
   data.topMat.emissive.setHex(0x000000);
   data.mainMat.emissiveIntensity = 0;
@@ -135,8 +127,8 @@ function applyColor(tile, index) {
 
 function makeTile(row, col) {
   const group = new THREE.Group();
-  const mainMat = lowPolyMaterial(0xffffff, { emissive: 0x000000, emissiveIntensity: 0 });
-  const topMat = lowPolyMaterial(0xffffff, { emissive: 0x000000, emissiveIntensity: 0 });
+  const mainMat = lowPolyMaterial(0xffffff, { emissive: 0x000000, emissiveIntensity: 0, roughness: 0.72 });
+  const topMat = lowPolyMaterial(0xffffff, { emissive: 0x000000, emissiveIntensity: 0, roughness: 0.62 });
   const block = new THREE.Mesh(tileGeometry, mainMat);
   block.castShadow = true;
   block.receiveShadow = true;
@@ -150,7 +142,8 @@ function makeTile(row, col) {
   group.position.set((col - 3) * STEP, 0, (row - 3) * STEP);
   group.userData = {
     row, col, color: 0, state: 'solid', timer: 0, vy: 0, warningId: 0, chainDepth: 0,
-    burstTotal: 0, burstIndex: 0, mainMat, topMat, bonus: null
+    burstTotal: 0, burstIndex: 0, growTotal: 0, bounceAge: 0, bounceStrength: 0,
+    mainMat, topMat, bonus: null
   };
   block.userData.tile = group;
   top.userData.tile = group;
@@ -190,6 +183,9 @@ function randomizeBoard() {
     tile.userData.chainDepth = 0;
     tile.userData.burstTotal = 0;
     tile.userData.burstIndex = 0;
+    tile.userData.growTotal = 0;
+    tile.userData.bounceAge = 0;
+    tile.userData.bounceStrength = 0;
   }
 
   for (let attempt = 0; attempt < 12; attempt += 1) {
@@ -573,11 +569,11 @@ function sfx(name, detail = {}) {
     const pitch = 1 + (detail.chain ?? 0) * 0.065 + ((detail.index ?? 0) % 4) * 0.035;
     voice({ from: 360 * pitch, peak: 560 * pitch, to: 210 * pitch, duration: 0.105, volume: 0.012, type: 'sine' });
     voice({ from: 1020 * pitch, to: 720 * pitch, duration: 0.055, volume: 0.006, delay: 0.006, type: 'triangle' });
-  } else if (name === 'drop') {
-    const note = 250 + (detail.color ?? 0) * 15;
-    voice({ from: 460, peak: 570, to: note, duration: 0.105, volume: 0.014, type: 'sine' });
-    voice({ from: 980, to: 720, duration: 0.05, volume: 0.005, delay: 0.012, type: 'triangle' });
-    noisePuff(0.05, 0.003, 920);
+  } else if (name === 'grow') {
+    const note = 440 + (detail.color ?? 0) * 24;
+    voice({ from: 230, peak: 340, to: note, duration: 0.13, volume: 0.013, type: 'sine' });
+    voice({ from: 680, to: 940, duration: 0.07, volume: 0.005, delay: 0.035, type: 'triangle' });
+    noisePuff(0.045, 0.002, 1180);
   } else if (name === 'ready') {
     [740, 880, 1175].forEach((note, index) => voice({ from: note * 0.98, to: note, duration: index === 2 ? 0.28 : 0.12, volume: index === 2 ? 0.02 : 0.014, delay: index * 0.095, type: index === 1 ? 'triangle' : 'sine' }));
   } else if (name === 'levelStart') {
@@ -838,6 +834,9 @@ function refreshHud() {
     score: state.score,
     combo: state.combo,
     goal: LEVELS[state.level].goal,
+    levels: LEVELS.length,
+    difficulty: LEVELS[state.level].difficulty,
+    warningTime: LEVELS[state.level].warning,
     time: Math.max(0, state.time),
     lives: state.lives,
     refill: state.refillRemaining,
@@ -945,7 +944,7 @@ function startLevel(index) {
   state.falling = false;
   refreshHud();
   schedule(spawnBonus, 450);
-  showToast(`第 ${index + 1} 层 · ${LEVELS[index].name}`);
+  showToast(`第 ${index + 1}/${LEVELS.length} 层 · ${LEVELS[index].name} · ${LEVELS[index].difficulty}`);
   sfx(index === 0 ? 'ready' : 'levelStart', { level: index });
 }
 
@@ -961,7 +960,6 @@ function reset() {
   state.audioEvents = [];
   state.respawning = false;
   state.invulnerable = 0;
-  resetMovePad();
   ui.intro.classList.remove('show');
   ui.result.classList.remove('show');
   startLevel(0);
@@ -975,13 +973,11 @@ function finish(win, reason = '', outcome = 'gameOver') {
   state.locked = true;
   state.queuedMove = null;
   pointerStart = null;
-  controlHold = null;
-  resetMovePad();
   stopMusic();
   $('#finalScore').textContent = state.score;
   $('#resultTag').textContent = win ? '全部通关' : '挑战结束';
   $('#resultTitle').textContent = win ? '方阵大师' : reason;
-  $('#resultText').textContent = win ? '三层方块风暴全部完成。' : '看准警告，在爆炸前跳到安全方块。';
+  $('#resultText').textContent = win ? `${LEVELS.length} 层方块风暴全部完成。` : '看准警告，在爆炸前跳到安全方块。';
   schedule(() => ui.result.classList.add('show'), 420);
   sfx(win ? 'fullClear' : outcome);
 }
@@ -1007,7 +1003,7 @@ function hopTo(rowDelta, colDelta, silentStart = false) {
     target,
     facing: Math.atan2(colDelta, rowDelta),
     elapsed: 0,
-    duration: 0.31
+    duration: HOP_DURATION
   };
   state.currentTile = null;
   state.grounded = false;
@@ -1032,11 +1028,43 @@ function requestMove(rowDelta, colDelta, haptic = false, silentStart = false) {
 }
 
 function triggerMatch(tile) {
-  const group = connectedMatch(tile);
+  const group = connectedMatch(tile, true);
+  const flashing = group.filter((member) => member.userData.state === 'warn');
+  if (flashing.length) {
+    const added = extendWarningGroup(group, flashing);
+    if (added.length) showToast(`${added.length} 格加入闪烁 · 快撤离`);
+    return added.length ? group : [];
+  }
   if (group.length < 4) return [];
-  igniteTiles(group, 0, 1.16);
+  igniteTiles(group, 0, LEVELS[state.level].warning);
   showToast(`${group.length} 格连通 · 快撤离`);
   return group;
+}
+
+function styleWarningTile(member) {
+  member.userData.mainMat.emissive.setHex(0x5c1421);
+  member.userData.topMat.emissive.setHex(0xffe48a);
+  member.userData.mainMat.emissiveIntensity = 0.7;
+  member.userData.topMat.emissiveIntensity = 0.9;
+}
+
+function extendWarningGroup(group, flashing) {
+  const added = group.filter((member) => member.userData.state === 'solid');
+  if (!added.length) return [];
+  const remaining = Math.max(0.05, Math.min(...flashing.map((member) => member.userData.timer)));
+  const earliest = flashing.find((member) => member.userData.timer === Math.min(...flashing.map((item) => item.userData.timer)));
+  const warningId = earliest.userData.warningId;
+  const chainDepth = Math.max(...flashing.map((member) => member.userData.chainDepth || 0));
+  for (const member of group) {
+    member.userData.state = 'warn';
+    member.userData.warningId = warningId;
+    member.userData.chainDepth = chainDepth;
+    member.userData.timer = remaining;
+    member.userData.burstTotal = remaining;
+    styleWarningTile(member);
+  }
+  sfx('ignite', { chain: chainDepth });
+  return added;
 }
 
 function igniteTiles(group, chainDepth, timer) {
@@ -1049,10 +1077,7 @@ function igniteTiles(group, chainDepth, timer) {
     member.userData.chainDepth = chainDepth;
     member.userData.timer = timer;
     member.userData.burstTotal = timer;
-    member.userData.mainMat.emissive.setHex(0x5c1421);
-    member.userData.topMat.emissive.setHex(0xffe48a);
-    member.userData.mainMat.emissiveIntensity = 0.7;
-    member.userData.topMat.emissiveIntensity = 0.9;
+    styleWarningTile(member);
   }
   sfx('ignite', { chain: chainDepth });
   scheduleWarningTicks(timer, chainDepth);
@@ -1126,9 +1151,12 @@ function explodeGroup(group) {
   for (const [index, tile] of ordered.entries()) {
     const distance = Math.hypot(tile.userData.row - centerRow, tile.userData.col - centerCol);
     tile.userData.state = 'bursting';
-    tile.userData.timer = 0.068 + distance * 0.032 + index * 0.004;
+    tile.userData.timer = EXPLOSION_TIMING.burstBase
+      + distance * EXPLOSION_TIMING.burstDistance
+      + index * EXPLOSION_TIMING.burstStagger;
     tile.userData.burstTotal = tile.userData.timer;
     tile.userData.burstIndex = index;
+    tile.userData.bounceStrength = 0;
     tile.userData.mainMat.emissive.setHex(0xffd75e);
     tile.userData.topMat.emissive.setHex(0xffffff);
     tile.userData.mainMat.emissiveIntensity = 1.1;
@@ -1160,6 +1188,8 @@ function landOn(tile, silent = false) {
   state.grounded = true;
   collectBonus(tile);
   if (tile.userData.state === 'solid') {
+    tile.userData.bounceAge = 0;
+    tile.userData.bounceStrength = 1;
     applyColor(tile, (tile.userData.color + 1) % COLORS.length);
     if (!silent) sfx('land', { color: tile.userData.color });
     triggerMatch(tile);
@@ -1179,8 +1209,6 @@ addEventListener('keydown', (event) => {
   event.preventDefault();
   requestMove(...move);
 });
-
-let controlHold = null;
 
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
@@ -1224,61 +1252,6 @@ function moveForSwipe(deltaX, deltaY) {
   return best.move;
 }
 
-const movePad = $('#movePad');
-const moveKeys = [...movePad.querySelectorAll('.move-key')];
-const padVectors = {
-  up: [0, -1],
-  down: [0, 1],
-  left: [-1, 0],
-  right: [1, 0]
-};
-
-function moveForPadKey(button) {
-  const vector = padVectors[button.dataset.direction];
-  return moveForSwipe(...vector);
-}
-
-function resetMovePad() {
-  for (const button of moveKeys) button.classList.remove('active');
-  controlHold = null;
-}
-
-function releaseMoveKey(event) {
-  if (!controlHold || event.pointerId !== controlHold.id) return;
-  const activeButton = controlHold.button;
-  controlHold = null;
-  activeButton.classList.remove('active');
-  if (activeButton.hasPointerCapture?.(event.pointerId)) activeButton.releasePointerCapture?.(event.pointerId);
-}
-
-for (const button of moveKeys) {
-  button.addEventListener('pointerdown', (event) => {
-    if (controlHold || event.button !== 0) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const move = moveForPadKey(button);
-    button.setPointerCapture?.(event.pointerId);
-    button.classList.add('active');
-    controlHold = { id: event.pointerId, move, button, nextMoveAt: performance.now() + 300 };
-    requestMove(...move, true);
-  });
-
-  button.addEventListener('pointermove', (event) => {
-    if (!controlHold || event.pointerId !== controlHold.id) return;
-    const rect = button.getBoundingClientRect();
-    const inside = event.clientX >= rect.left && event.clientX <= rect.right
-      && event.clientY >= rect.top && event.clientY <= rect.bottom;
-    if (!inside) releaseMoveKey(event);
-  });
-
-  button.addEventListener('pointerup', releaseMoveKey);
-  button.addEventListener('pointercancel', releaseMoveKey);
-  button.addEventListener('lostpointercapture', releaseMoveKey);
-  button.addEventListener('click', (event) => {
-    if (event.detail === 0) requestMove(...moveForPadKey(button));
-  });
-}
-
 renderer.domElement.addEventListener('pointerdown', (event) => {
   const swipeEnabled = event.pointerType === 'touch' || innerWidth < 760;
   pointerStart = { x: event.clientX, y: event.clientY, id: event.pointerId, swipeEnabled, moved: false, move: null, nextMoveAt: 0 };
@@ -1298,7 +1271,7 @@ renderer.domElement.addEventListener('pointermove', (event) => {
     const move = moveForSwipe(deltaX, deltaY);
     if (!pointerStart.move || move[0] !== pointerStart.move[0] || move[1] !== pointerStart.move[1]) {
       pointerStart.move = move;
-      pointerStart.nextMoveAt = performance.now() + 310;
+      pointerStart.nextMoveAt = performance.now() + HELD_MOVE_INTERVAL;
       requestMove(...move, true);
     }
   }
@@ -1339,11 +1312,7 @@ function updateHeldInput() {
   const now = performance.now();
   if (pointerStart?.move && now >= pointerStart.nextMoveAt) {
     requestMove(...pointerStart.move);
-    pointerStart.nextMoveAt = now + 285;
-  }
-  if (controlHold?.move && now >= controlHold.nextMoveAt) {
-    requestMove(...controlHold.move);
-    controlHold.nextMoveAt = now + 285;
+    pointerStart.nextMoveAt = now + HELD_MOVE_INTERVAL;
   }
 }
 
@@ -1392,6 +1361,22 @@ function updatePlayer(delta, elapsed) {
   }
 }
 
+function updateTileBounce(tile, delta) {
+  const data = tile.userData;
+  if (data.bounceStrength > 0.015) {
+    data.bounceAge += delta;
+    data.bounceStrength *= Math.exp(-4.8 * delta);
+    const wave = Math.cos(data.bounceAge * 17) * data.bounceStrength;
+    tile.scale.set(1 + wave * 0.065, 1 - wave * 0.13, 1 + wave * 0.065);
+    return;
+  }
+  data.bounceStrength = 0;
+  const settle = 1 - Math.exp(-14 * delta);
+  tile.scale.x = THREE.MathUtils.lerp(tile.scale.x, 1, settle);
+  tile.scale.y = THREE.MathUtils.lerp(tile.scale.y, 1, settle);
+  tile.scale.z = THREE.MathUtils.lerp(tile.scale.z, 1, settle);
+}
+
 function updateTiles(delta, elapsed) {
   const expiredWarnings = new Set();
   for (const tile of tiles) {
@@ -1399,6 +1384,7 @@ function updateTiles(delta, elapsed) {
     if (data.state === 'warn') {
       data.timer -= delta;
       tile.position.y = Math.sin(elapsed * 28 + data.row + data.col) * 0.045;
+      updateTileBounce(tile, delta);
       const pulse = 0.55 + Math.sin(elapsed * 20) * 0.35;
       data.topMat.emissiveIntensity = pulse + 0.5;
       if (data.timer <= 0) expiredWarnings.add(data.warningId);
@@ -1436,31 +1422,42 @@ function updateTiles(delta, elapsed) {
     } else if (data.state === 'empty') {
       data.timer -= delta;
       if (data.timer <= 0) {
-        data.state = 'dropping';
+        data.state = 'growing';
+        data.timer = 0.48 + Math.random() * 0.08;
+        data.growTotal = data.timer;
+        data.bounceAge = 0;
+        data.bounceStrength = 0;
         data.vy = 0;
         tile.visible = true;
-        tile.position.y = 5.5 + Math.random() * 3.4;
-        tile.scale.set(0.88, 1.1, 0.88);
-        applyColor(tile, takeNextColor());
-      }
-    } else if (data.state === 'dropping') {
-      data.vy -= 25 * delta;
-      tile.position.y += data.vy * delta;
-      tile.rotation.y += delta * 1.1;
-      if (tile.position.y <= 0) {
-        tile.position.y = 0;
+        tile.position.y = -0.42;
         tile.rotation.set(0, 0, 0);
-        tile.scale.set(1.12, 0.82, 1.12);
-        data.state = 'solid';
-        data.timer = 0;
-        data.burstTotal = 0;
-        state.refillRemaining = Math.max(0, state.refillRemaining - 1);
-        refreshHud();
-        sfx('drop', { color: data.color });
+        tile.scale.set(0.78, 0.06, 0.78);
+        applyColor(tile, takeNextColor());
+        sfx('grow', { color: data.color });
+      }
+    } else if (data.state === 'growing') {
+      data.timer -= delta;
+      const progress = 1 - Math.max(0, data.timer) / Math.max(0.001, data.growTotal);
+      const eased = 1 - Math.pow(1 - Math.min(1, progress), 3);
+      const settle = Math.sin(Math.min(1, progress) * Math.PI) * 0.055;
+      tile.position.y = -0.42 + eased * 0.42;
+      tile.scale.set(0.78 + eased * 0.22 + settle, 0.06 + eased * 0.94 + settle, 0.78 + eased * 0.22 + settle);
+      if (tile.position.y <= 0) {
+        if (data.timer <= 0) {
+          tile.position.y = 0;
+          tile.rotation.set(0, 0, 0);
+          tile.scale.set(1.06, 0.92, 1.06);
+          data.state = 'solid';
+          data.timer = 0;
+          data.burstTotal = 0;
+          data.growTotal = 0;
+          state.refillRemaining = Math.max(0, state.refillRemaining - 1);
+          refreshHud();
+        }
       }
     } else if (data.state === 'solid') {
       tile.position.y = THREE.MathUtils.lerp(tile.position.y, 0, 1 - Math.exp(-12 * delta));
-      tile.scale.lerp(new THREE.Vector3(1, 1, 1), 0.18);
+      updateTileBounce(tile, delta);
     }
     if (data.bonus) {
       data.bonus.rotation.x += delta * 1.15;
@@ -1471,6 +1468,19 @@ function updateTiles(delta, elapsed) {
   for (const warningId of expiredWarnings) {
     const group = tiles.filter((tile) => tile.userData.state === 'warn' && tile.userData.warningId === warningId);
     explodeGroup(group);
+  }
+  if (QA_MODE) {
+    renderer.domElement.dataset.qaState = JSON.stringify({
+      player: state.currentTile ? [state.currentTile.userData.row, state.currentTile.userData.col] : null,
+      colors: tiles.map((tile) => tile.userData.color),
+      states: tiles.map((tile) => tile.userData.state),
+      score: state.score,
+      refill: state.refillRemaining,
+      warningTime: LEVELS[state.level].warning,
+      hopDuration: HOP_DURATION,
+      heldMoveInterval: HELD_MOVE_INTERVAL,
+      explosionTiming: EXPLOSION_TIMING
+    });
   }
 }
 
@@ -1592,16 +1602,14 @@ function updateCamera(delta) {
     camera.fov = targetFov;
     camera.updateProjectionMatrix();
   }
-  const distance = camera.aspect < 0.65
-    ? 39
+  const distance = compact
+    ? 18 / Math.min(camera.aspect, 1)
     : camera.aspect < 1
       ? 23
       : camera.aspect < 1.2
         ? 20.5
-        : compact
-          ? 20
-          : 18.2;
-  const direction = new THREE.Vector3(0.82, 1.02, 0.82).normalize().multiplyScalar(distance);
+        : 18.2;
+  const direction = new THREE.Vector3(0.4, 1.55, 1.09).normalize().multiplyScalar(distance);
   const desired = cameraTarget.clone().add(direction);
   if (state.shake > 0) {
     desired.x += (Math.random() - 0.5) * state.shake;
@@ -1652,14 +1660,19 @@ window.__bounceGrid = {
     score: state.score,
     combo: state.combo,
     goal: LEVELS[state.level].goal,
+    levels: LEVELS.length,
+    difficulty: LEVELS[state.level].difficulty,
+    warningTime: LEVELS[state.level].warning,
+    hopDuration: HOP_DURATION,
+    heldMoveInterval: HELD_MOVE_INTERVAL,
+    explosionTiming: { ...EXPLOSION_TIMING },
     time: state.time,
     lives: state.lives,
     refill: state.refillRemaining,
     respawning: state.respawning,
     invulnerable: state.invulnerable,
     sound: state.sound,
-    inputMode: innerWidth <= 900 ? 'swipe-or-dpad' : 'keyboard-click-or-swipe',
-    dpadMove: controlHold?.move ?? null,
+    inputMode: innerWidth <= 900 ? 'swipe' : 'keyboard-click-or-swipe',
     audioState: state.audio?.state ?? 'not-started',
     musicStyle: 'airy-toybox-offbeat',
     audioMix: 'character-priority',

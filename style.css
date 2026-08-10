@@ -426,56 +426,6 @@ button { border: 0; font: inherit; letter-spacing: 0; }
   transform: translate(-50%, -50%);
 }
 
-.move-pad {
-  position: fixed;
-  z-index: 7;
-  right: 16px;
-  bottom: 16px;
-  display: none;
-  grid-template-columns: repeat(3, 44px);
-  grid-template-rows: repeat(3, 44px);
-  gap: 2px;
-  width: 136px;
-  height: 136px;
-  padding: 0;
-  pointer-events: none;
-  touch-action: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.move-key {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  border-radius: 50%;
-  background-color: rgba(245, 241, 231, 0.9);
-  background-image: var(--paper-texture);
-  background-size: 260px 260px;
-  background-blend-mode: soft-light;
-  color: rgba(77, 74, 69, 0.72);
-  font-size: 24px;
-  font-weight: 700;
-  line-height: 1;
-  cursor: pointer;
-  pointer-events: auto;
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-  transition: color 0.1s, background-color 0.1s, transform 0.1s;
-}
-
-.move-key span { display: block; transform: translateY(-1px); pointer-events: none; }
-.move-key:focus-visible { outline: 3px solid rgba(83, 168, 149, 0.52); outline-offset: 2px; }
-.move-key.active,
-.move-key:active { background-color: var(--aqua); color: #fffdf8; transform: scale(0.92); }
-
-.move-up { grid-column: 2; grid-row: 1; }
-.move-left { grid-column: 1; grid-row: 2; }
-.move-right { grid-column: 3; grid-row: 2; }
-.move-down { grid-column: 2; grid-row: 3; }
-
 @media (max-width: 900px) {
   .hud { top: 10px; left: 10px; right: 10px; grid-template-columns: minmax(270px, 360px) auto; gap: 9px; }
   .stats { height: 50px; grid-template-columns: 52px minmax(90px, 1fr) 52px 64px; padding: 6px 8px; }
@@ -483,7 +433,6 @@ button { border: 0; font: inherit; letter-spacing: 0; }
   .stats strong { font-size: 21px; }
   .next-panel { height: 44px; }
   .icon-button { width: 44px; height: 44px; }
-  .move-pad { display: grid; }
 }
 
 @media (max-width: 600px) {
@@ -530,14 +479,5 @@ button { border: 0; font: inherit; letter-spacing: 0; }
   .next-cubes i { width: 11px; height: 11px; }
   .icon-button { width: 42px; height: 42px; }
   .intro-copy { width: min(288px, calc(100vw - 32px)); margin-left: 16px; }
-  .move-pad {
-    right: 8px;
-    bottom: 10px;
-    grid-template-columns: repeat(3, 44px);
-    grid-template-rows: repeat(3, 44px);
-    width: 136px;
-    height: 136px;
-  }
-  .move-key { font-size: 23px; }
   .combo { left: 10px; bottom: 12px; }
 }

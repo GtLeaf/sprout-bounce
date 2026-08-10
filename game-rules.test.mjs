@@ -64,7 +64,7 @@ test('newly refilled or warning tiles cannot create an automatic solid match', (
   const board = makeBoard();
   const cells = [[3, 1], [3, 2], [3, 3], [3, 4]];
   paint(board, cells);
-  board.states[indexAt(3, 4)] = 'dropping';
+  board.states[indexAt(3, 4)] = 'growing';
   assert.equal(orthogonalComponent(board.colors, board.states, indexAt(3, 2), SIZE).length, 3);
   board.states[indexAt(3, 4)] = 'warn';
   assert.equal(orthogonalComponent(board.colors, board.states, indexAt(3, 2), SIZE).length, 3);
@@ -80,6 +80,25 @@ test('components respect board edges without wrapping rows', () => {
 });
 
 test('gameplay has no secondary blast path for disconnected tiles', () => {
-  assert.match(gameSource, /if \(group\.length < 4\) return \[\];[\s\S]*?igniteTiles\(group, 0, 1\.16\);/);
+  assert.match(gameSource, /const group = connectedMatch\(tile, true\);[\s\S]*?if \(group\.length < 4\) return \[\];[\s\S]*?igniteTiles\(group, 0, LEVELS\[state\.level\]\.warning\);/);
   assert.doesNotMatch(gameSource, /cardinalBlastTargets|chainTargetsFor|chainTargets/);
+});
+
+test('flashing groups absorb newly connected same-color solid tiles', () => {
+  assert.match(gameSource, /const flashing = group\.filter\(\(member\) => member\.userData\.state === 'warn'\)/);
+  assert.match(gameSource, /const added = group\.filter\(\(member\) => member\.userData\.state === 'solid'\)/);
+  assert.match(gameSource, /const remaining = Math\.max\(0\.05, Math\.min/);
+  assert.match(gameSource, /member\.userData\.state = 'warn';[\s\S]*?member\.userData\.timer = remaining;/);
+});
+
+test('replacement tiles grow from the board instead of falling from above', () => {
+  assert.match(gameSource, /data\.state = 'growing';[\s\S]*?tile\.position\.y = -0\.42;[\s\S]*?tile\.scale\.set\(0\.78, 0\.06, 0\.78\);/);
+  assert.doesNotMatch(gameSource, /data\.state = 'dropping'|tile\.position\.y = 5\.5/);
+});
+
+test('tiles use rounded geometry and a damped landing bounce', () => {
+  assert.match(gameSource, /new RoundedBoxGeometry\(SIZE, 0\.72, SIZE, 3, 0\.23\)/);
+  assert.match(gameSource, /new RoundedBoxGeometry\(SIZE - 0\.12, 0\.1, SIZE - 0\.12, 2, 0\.16\)/);
+  assert.match(gameSource, /bounceStrength = 1;[\s\S]*?function updateTileBounce/);
+  assert.match(gameSource, /Math\.cos\(data\.bounceAge \* 17\) \* data\.bounceStrength/);
 });

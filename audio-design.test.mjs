@@ -28,3 +28,9 @@ test('game outcomes have distinct audio feedback', () => {
   assert.match(source, /finish\(false, '时间到了', 'timeout'\)/);
   assert.match(source, /sfx\(win \? 'fullClear' : outcome\)/);
 });
+
+test('replacement tiles use a rising growth cue', () => {
+  assert.match(source, /name === 'grow'/);
+  assert.match(source, /voice\(\{ from: 230, peak: 340, to: note/);
+  assert.doesNotMatch(source, /name === 'drop'/);
+});

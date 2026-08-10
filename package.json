@@ -1,10 +1,10 @@
 {
   "name": "sprout-bounce-grid",
-  "version": "1.0.1",
+  "version": "1.1.12",
   "private": true,
   "type": "module",
   "scripts": {
     "start": "node serve.mjs",
-    "test": "node --test audio-design.test.mjs controls.test.mjs game-rules.test.mjs"
+    "test": "node --test audio-design.test.mjs controls.test.mjs game-progression.test.mjs game-rules.test.mjs"
   }
 }

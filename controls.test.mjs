@@ -10,24 +10,30 @@ const [html, script, styles] = await Promise.all([
 ]);
 
 
-test('mobile controls expose four separate direction buttons', () => {
-  for (const direction of ['up', 'down', 'left', 'right']) {
-    assert.match(html, new RegExp(`data-direction="${direction}"`));
-  }
-  assert.doesNotMatch(html, /moveStick|move-stick-knob/);
+test('mobile controls use gestures without a permanent direction pad', () => {
+  assert.match(html, /id="swipePad"/);
+  assert.doesNotMatch(html, /movePad|move-key|data-direction=/);
+  assert.doesNotMatch(styles, /\.move-pad|\.move-key/);
 });
 
 
-test('direction buttons preserve a 44px touch target on narrow screens', () => {
-  assert.match(styles, /\.move-key \{[\s\S]*?width: 44px;[\s\S]*?height: 44px;/);
-  assert.doesNotMatch(styles, /\.move-key \{ width: 42px/);
+test('holding a swipe continues movement in the same direction', () => {
+  assert.match(script, /pointerStart\?\.move && now >= pointerStart\.nextMoveAt/);
+  assert.match(script, /const HELD_MOVE_INTERVAL = 235/);
+  assert.match(script, /pointerStart\.nextMoveAt = now \+ HELD_MOVE_INTERVAL/);
 });
 
 
-test('leaving a held button stops movement instead of changing direction', () => {
-  assert.match(script, /if \(!inside\) releaseMoveKey\(event\);/);
-  assert.match(script, /controlHold = \{ id: event\.pointerId, move, button, nextMoveAt:/);
-  assert.doesNotMatch(script, /distance < 13/);
+test('single hops use the faster movement timing', () => {
+  assert.match(script, /const HOP_DURATION = 0\.25/);
+  assert.match(script, /duration: HOP_DURATION/);
+});
+
+
+test('board restores green support blocks beneath individual tiles', () => {
+  assert.match(script, /const baseGroup = new THREE\.Group\(\)/);
+  assert.match(script, /const baseGeometry = new RoundedBoxGeometry\(SIZE - 0\.08, 0\.14, SIZE - 0\.08, 1, 0\.07\)/);
+  assert.match(script, /lowPolyMaterial\(0x27695e\)[\s\S]*?lowPolyMaterial\(0x317765\)/);
 });
 
 test('sound control matches the adjacent queue panel at mobile sizes', () => {
@@ -35,7 +41,9 @@ test('sound control matches the adjacent queue panel at mobile sizes', () => {
   assert.match(styles, /@media \(max-width: 380px\) \{[\s\S]*?\.next-panel \{ width: 66px;[\s\S]*?\.icon-button \{ width: 42px; height: 42px; \}/);
 });
 
-test('camera uses a centered, slightly steeper board view', () => {
-  assert.match(script, /new THREE\.Vector3\(0\.82, 1\.02, 0\.82\)/);
-  assert.doesNotMatch(script, /new THREE\.Vector3\(0\.72, 0\.82, 0\.9\)/);
+test('camera uses a centered, rotated board view', () => {
+  assert.match(script, /new THREE\.Vector3\(0\.4, 1\.55, 1\.09\)/);
+  assert.match(script, /18 \/ Math\.min\(camera\.aspect, 1\)/);
+  assert.doesNotMatch(script, /new THREE\.Vector3\(0\.82, 1\.55, 0\.82\)/);
+  assert.doesNotMatch(script, /camera\.aspect < 0\.65\s*\? 39/);
 });
