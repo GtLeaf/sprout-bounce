@@ -27,7 +27,7 @@
     document.documentElement.style.setProperty('--qa-height', `${height}px`);
     document.documentElement.style.setProperty('--qa-scale', scale);
     const phone = document.querySelector('#phone');
-    const version = params.get('v') || '58';
+    const version = params.get('v') || '88';
     const gameParams = new URLSearchParams({ v: version, qa: `${width}x${height}` });
     if (params.has('tutorial')) gameParams.set('tutorial', params.get('tutorial'));
     phone.src = `./?${gameParams}`;

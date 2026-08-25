@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
-const preferredPort = Number.parseInt(process.env.DEPLOY_RUN_PORT || process.env.PORT || '4175', 10);
+const preferredPort = Number.parseInt(process.env.PORT || '4175', 10);
 const mimeTypes = {
   '.css': 'text/css; charset=utf-8',
   '.html': 'text/html; charset=utf-8',
@@ -57,7 +57,7 @@ function listen(port) {
     if (error.code === 'EADDRINUSE' && port < preferredPort + 20) listen(port + 1);
     else throw error;
   });
-  server.listen(port, '0.0.0.0', () => {
+  server.listen(port, '127.0.0.1', () => {
     const url = `http://127.0.0.1:${port}/`;
     console.log(`Sprout Bounce Grid: ${url}`);
     console.log('Press Ctrl+C to stop.');

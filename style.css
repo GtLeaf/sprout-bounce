@@ -347,6 +347,8 @@ button { border: 0; font: inherit; letter-spacing: 0; }
   padding: 24px;
   background: rgba(39, 47, 43, 0.34);
   backdrop-filter: blur(10px) saturate(0.78);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .result-box {
@@ -398,6 +400,76 @@ button { border: 0; font: inherit; letter-spacing: 0; }
 }
 
 .result-box .primary { margin: 23px auto 0; }
+
+.level-result { z-index: 9; }
+.level-result-box { width: min(390px, calc(100vw - 38px)); }
+.level-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 22px auto 0;
+}
+
+.level-summary > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 12px 6px 10px;
+  border-radius: 18px;
+  background: rgba(83, 168, 149, 0.11);
+}
+
+.level-summary strong {
+  color: var(--aqua);
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.level-summary span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.leaderboard-block {
+  margin: 22px auto 0;
+  text-align: left;
+}
+
+.leaderboard-block h3 {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+#leaderboard {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+#leaderboard li {
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 5px 9px;
+  border-radius: 12px;
+  background: rgba(77, 74, 69, 0.06);
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+#leaderboard li:first-child { background: rgba(228, 206, 139, 0.32); color: var(--ink); }
+#leaderboard li strong { color: var(--ink); font-size: 12px; }
+#leaderboard li b { color: var(--aqua); font-size: 13px; }
 
 .tutorial {
   position: fixed;
@@ -729,6 +801,11 @@ button { border: 0; font: inherit; letter-spacing: 0; }
   .result-box { padding: 38px 22px 30px; border-radius: 38px; }
   .result-box h2 { font-size: 27px; }
   .score strong { font-size: 56px; }
+  .level-summary { gap: 5px; margin-top: 18px; }
+  .level-summary > div { padding-left: 3px; padding-right: 3px; }
+  .level-summary strong { font-size: 21px; }
+  .level-summary span { font-size: 9px; }
+  #leaderboard li { grid-template-columns: 22px 1fr auto; gap: 5px; }
 
   .tutorial-stage { padding-top: max(62px, env(safe-area-inset-top)); }
   .tutorial-visual { width: min(82vw, 300px); height: min(40vh, 300px); }

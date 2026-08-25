@@ -1,12 +1,12 @@
 export const LEVELS = Object.freeze([
-  { name: '初芽庭院', difficulty: '入门', time: 105, roundGoal: 5, warning: 6.0 },
-  { name: '彩虹小径', difficulty: '入门', time: 100, roundGoal: 6, warning: 5.8 },
-  { name: '软糖广场', difficulty: '标准', time: 96, roundGoal: 7, warning: 5.6 },
-  { name: '云朵回廊', difficulty: '标准', time: 92, roundGoal: 8, warning: 5.4 },
-  { name: '风车花园', difficulty: '进阶', time: 88, roundGoal: 10, warning: 5.2 },
-  { name: '星光高台', difficulty: '进阶', time: 84, roundGoal: 12, warning: 5.0 },
-  { name: '极光风暴', difficulty: '挑战', time: 80, roundGoal: 14, warning: 4.8 },
-  { name: '彩虹之巅', difficulty: '挑战', time: 76, roundGoal: 16, warning: 4.6 }
+  { name: '初芽庭院', difficulty: '入门', time: 105, roundGoal: 5, warning: 6.0, decayGrace: 18, decayInterval: 9 },
+  { name: '彩虹小径', difficulty: '入门', time: 100, roundGoal: 6, warning: 5.8, decayGrace: 17, decayInterval: 9 },
+  { name: '软糖广场', difficulty: '标准', time: 96, roundGoal: 7, warning: 5.6, decayGrace: 16, decayInterval: 8 },
+  { name: '云朵回廊', difficulty: '标准', time: 92, roundGoal: 8, warning: 5.4, decayGrace: 15, decayInterval: 8 },
+  { name: '风车花园', difficulty: '进阶', time: 88, roundGoal: 10, warning: 5.2, decayGrace: 14, decayInterval: 7 },
+  { name: '星光高台', difficulty: '进阶', time: 84, roundGoal: 12, warning: 5.0, decayGrace: 13, decayInterval: 7 },
+  { name: '极光风暴', difficulty: '挑战', time: 80, roundGoal: 14, warning: 4.8, decayGrace: 12, decayInterval: 6 },
+  { name: '彩虹之巅', difficulty: '挑战', time: 76, roundGoal: 16, warning: 4.6, decayGrace: 11, decayInterval: 6 }
 ].map(Object.freeze));
 
 export const EXPLOSION_TIMING = Object.freeze({

@@ -8,7 +8,7 @@
   <meta name="application-name" content="Happy Jump">
   <meta name="apple-mobile-web-app-title" content="Happy Jump">
   <title>Happy Jump</title>
-  <link rel="stylesheet" href="style.css?v=85">
+  <link rel="stylesheet" href="style.css?v=88.2">
   <script type="importmap">
     {"imports":{"three":"./vendor/three/three.module.js","three/addons/":"./vendor/three/addons/"}}
   </script>
@@ -31,9 +31,9 @@
   </header>
 
   <div class="combo" aria-label="本层爆破回合"><span>回合</span><div><strong id="combo">00</strong><i>/</i><b id="goal">05</b></div></div>
-  <div id="toast" class="toast">四连锁定</div>
+  <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true">四连锁定</div>
 
-  <section id="intro" class="overlay show">
+  <section id="intro" class="overlay show" aria-hidden="false">
     <img class="intro-video" src="assets/sprout-keyart.png" alt="">
     <div class="intro-shade"></div>
     <div class="intro-copy">
@@ -42,13 +42,31 @@
     </div>
   </section>
 
-  <section id="result" class="overlay result">
+  <section id="result" class="overlay result" aria-hidden="true" inert>
     <div class="result-box">
       <div id="resultTag" class="kicker">挑战结束</div>
       <h2 id="resultTitle">再来一局</h2>
       <div class="score"><strong id="finalScore">0</strong><span>分</span></div>
       <p id="resultText">差一点完成本层目标。</p>
+      <div class="leaderboard-block" aria-live="polite">
+        <h3>本机排行榜</h3>
+        <ol id="leaderboard" aria-label="本机排行榜"></ol>
+      </div>
       <button id="restart" class="primary" type="button"><span>重新开始</span><img class="control-icon" src="assets/ui-restart.png" alt="" draggable="false"></button>
+    </div>
+  </section>
+
+  <section id="levelResult" class="overlay result level-result" aria-hidden="true" inert>
+    <div class="result-box level-result-box">
+      <div id="levelResultKicker" class="kicker">本关完成</div>
+      <h2 id="levelResultTitle">第 1 层完成</h2>
+      <div class="level-summary" aria-label="本关成绩">
+        <div><strong id="levelResultScore">0</strong><span>本关得分</span></div>
+        <div><strong id="levelResultTiles">0</strong><span>爆破格数</span></div>
+        <div><strong id="levelResultRounds">0/0</strong><span>爆破回合</span></div>
+      </div>
+      <p id="levelResultText">准备好后进入下一层。</p>
+      <button id="levelContinue" class="primary" type="button"><span>继续下一层</span><img class="control-icon" src="assets/ui-forward-v80.png" alt="" draggable="false"></button>
     </div>
   </section>
 
@@ -92,6 +110,6 @@
   </section>
 
   <div id="swipePad" class="swipe-pad" aria-hidden="true"><i></i></div>
-  <script type="module" src="game.js?v=85"></script>
+  <script type="module" src="game.js?v=88.3"></script>
 </body>
 </html>

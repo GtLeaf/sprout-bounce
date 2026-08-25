@@ -1,15 +1,19 @@
-import * as THREE from 'three';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { EXPLOSION_TIMING, LEVELS, REWARD_TILE_THRESHOLDS, TILES_PER_ROUND, TILE_COLORS, rewardRankForTileCount, roundsForTileCount } from './game-config.mjs?v=85';
-import { orthogonalComponent } from './game-rules.mjs?v=85';
+import * as THREE from './vendor/three/three.module.js';
+import { RoundedBoxGeometry } from './vendor/three/addons/geometries/RoundedBoxGeometry.js';
+import { EXPLOSION_TIMING, LEVELS, REWARD_TILE_THRESHOLDS, TILES_PER_ROUND, TILE_COLORS, rewardRankForTileCount, roundsForTileCount } from './game-config.mjs?v=88';
+import { isChallengingStartBoard, orthogonalComponent } from './game-rules.mjs?v=88';
 
 const $ = (selector) => document.querySelector(selector);
 const QA_MODE = new URLSearchParams(location.search).has('qa');
 
 const ui = {
-  intro: $('#intro'), result: $('#result'), level: $('#level'), score: $('#score'),
+  intro: $('#intro'), result: $('#result'), levelResult: $('#levelResult'), level: $('#level'), score: $('#score'),
   timer: $('#timer'), rounds: $('#combo'), roundGoal: $('#goal'), lives: $('#lives'),
-  next: $('#next'), toast: $('#toast')
+  next: $('#next'), toast: $('#toast'),
+  levelResultKicker: $('#levelResultKicker'), levelResultTitle: $('#levelResultTitle'),
+  levelResultScore: $('#levelResultScore'), levelResultTiles: $('#levelResultTiles'),
+  levelResultRounds: $('#levelResultRounds'), levelResultText: $('#levelResultText'),
+  levelContinue: $('#levelContinue'), leaderboard: $('#leaderboard')
 };
 
 const tutorialUi = {
@@ -25,6 +29,7 @@ const TUTORIAL_STEPS = [
   { title: '及时撤离', text: '方块闪烁时继续扩大片区，并在塌陷前跳到安全格。' }
 ];
 const TUTORIAL_STORAGE_KEY = 'happy-jump-mobile-tutorial-v2';
+const LEADERBOARD_STORAGE_KEY = 'happy-jump-leaderboard-v1';
 const TUTORIAL_QUERY = new URLSearchParams(location.search).get('tutorial');
 let tutorialStep = 0;
 let tutorialPointerStart = null;
@@ -142,30 +147,39 @@ const SIZE = 1.45;
 const GAP = 0.10;
 const STEP = SIZE + GAP;
 const PLAYER_BASE = 0.43;
-const HOP_DURATION = 0.25;
+const RHYTHM_BPM = 128;
+const RHYTHM_BEAT_SECONDS = 60 / RHYTHM_BPM / 2;
+const HOP_DURATION = RHYTHM_BEAT_SECONDS;
 const HOP_ANTICIPATION = 0.11;
 const HOP_FLIGHT_END = 0.88;
 const HOP_HEIGHT = 1.5;
-const HELD_MOVE_INTERVAL = 235;
+const HELD_MOVE_INTERVAL = Math.round(RHYTHM_BEAT_SECONDS * 1000);
+const MAX_COLLAPSING_TILES = BOARD * BOARD - 1;
 const MOBILE_CAMERA_DISTANCE = 15.6;
 const MOBILE_CAMERA_TARGET_X = -0.38;
-const JUMP_LYRIC_FILE = 'assets/audio/jump-lyrics-v85/happyjump-apple-continuous-master.wav';
-const JUMP_LYRIC_TEXT = ['我', '是', '一', '个', '小', '苹', '果', '每', '天', '就', '爱', '跳', '跳', '乐'];
-const JUMP_LYRIC_PHRASE = JUMP_LYRIC_TEXT.join('');
-const JUMP_LYRIC_RESET_GAP = 900;
-const JUMP_LYRIC_BUS_GAIN = 0.7;
-const JUMP_LYRIC_TRIGGER_INTERVAL = HELD_MOVE_INTERVAL / 1000;
-const JUMP_LYRIC_CROSSFADE = 0.045;
-const JUMP_LYRIC_LEGATO_GAP = 0.52;
 const MIX_AUDIO_FILES = Object.freeze({
-  bgm: 'assets/audio/mix-v84/happyjump-bgm-cute-toy-loop.wav',
-  levelClear: 'assets/audio/mix-v84/happyjump-level-clear.wav',
-  fullClear: 'assets/audio/mix-v84/happyjump-full-clear.wav',
-  lifeLost: 'assets/audio/mix-v84/happyjump-life-lost.wav',
-  gameOver: 'assets/audio/mix-v84/happyjump-game-over.wav',
-  timeout: 'assets/audio/mix-v84/happyjump-timeout.wav'
+  bgm: 'assets/audio/mix-v91/happyjump-bgm-bouncy-party-v91.wav',
+  hopBeat: 'assets/audio/mix-v92/happyjump-hop-soft-pop-v92.wav',
+  levelClear: 'assets/audio/mix-v91/happyjump-level-clear-party-v91.wav',
+  fullClear: 'assets/audio/mix-v91/happyjump-full-clear-party-v91.wav',
+  lifeLost: 'assets/audio/mix-v91/happyjump-life-lost-party-v91.wav',
+  gameOver: 'assets/audio/mix-v91/happyjump-game-over-party-v91.wav',
+  timeout: 'assets/audio/mix-v91/happyjump-timeout-party-v91.wav'
 });
-const MIX_CUE_GAINS = Object.freeze({ levelClear: 0.5, fullClear: 0.52, lifeLost: 0.44, gameOver: 0.46, timeout: 0.44 });
+const MIX_CUE_GAINS = Object.freeze({ hopBeat: 0.38, levelClear: 0.42, fullClear: 0.44, lifeLost: 0.38, gameOver: 0.4, timeout: 0.38 });
+// Failure feedback is intentionally silent. The fall/life-loss/timeout cues
+// combined descending tones, noise and generated samples that were too sharp
+// on phone speakers. We still record these events for QA and keep the visual
+// state changes, but do not send any negative-state audio to the output bus.
+const SILENT_NEGATIVE_CUES = new Set([
+  'fall',
+  'lifeLost',
+  'lastLife',
+  'countdown',
+  'progressLost',
+  'timeout',
+  'gameOver'
+]);
 const COLOR_DEFS = TILE_COLORS;
 const COLORS = COLOR_DEFS.map((item) => item.hex);
 const MAX_LIVES = 3;
@@ -256,7 +270,7 @@ function makeTile(row, col) {
   group.userData = {
     row, col, color: 0, state: 'solid', timer: 0, vy: 0, warningId: 0, chainDepth: 0,
     burstTotal: 0, burstIndex: 0, growTotal: 0, bounceAge: 0, bounceStrength: 0,
-    mainMat, topMat, bonus: null
+    mainMat, topMat, bonus: null, pendingBonus: null
   };
   block.userData.tile = group;
   top.userData.tile = group;
@@ -303,17 +317,20 @@ function randomizeBoard() {
     tile.userData.bounceStrength = 0;
   }
 
-  for (let attempt = 0; attempt < 12; attempt += 1) {
-    for (const tile of tiles) applyColor(tile, Math.floor(Math.random() * COLORS.length));
-    for (let pass = 0; pass < 240; pass += 1) {
-      const problem = tiles.find((tile) => connectedMatch(tile).length >= 4);
-      if (!problem) return;
-      applyColor(problem, (problem.userData.color + 1 + Math.floor(Math.random() * (COLORS.length - 1))) % COLORS.length);
-    }
-  }
-
   const offset = Math.floor(Math.random() * COLORS.length);
-  for (const tile of tiles) applyColor(tile, (tile.userData.row * 2 + tile.userData.col * 3 + offset) % COLORS.length);
+  const colors = tiles.map((tile) => (tile.userData.row * 2 + tile.userData.col * 3 + offset) % COLORS.length);
+  // Start from a checker-like pattern that has no one-visit four-group, then
+  // accept random mutations only while that guarantee remains true.
+  let acceptedMutations = 0;
+  for (let attempt = 0; attempt < 160 && acceptedMutations < 30; attempt += 1) {
+    const index = Math.floor(Math.random() * colors.length);
+    const previous = colors[index];
+    const candidate = (previous + 1 + Math.floor(Math.random() * (COLORS.length - 1))) % COLORS.length;
+    colors[index] = candidate;
+    if (isChallengingStartBoard(colors, BOARD, COLORS.length)) acceptedMutations += 1;
+    else colors[index] = previous;
+  }
+  colors.forEach((color, index) => applyColor(tiles[index], color));
 }
 
 const player = new THREE.Group();
@@ -451,16 +468,7 @@ function clearEffects() {
   shockwaves.length = 0;
 }
 
-const MUSIC_BUS_GAIN = 0.3;
-const jumpLyricFetch = (async () => {
-  try {
-    const response = await fetch(JUMP_LYRIC_FILE);
-    if (!response.ok) throw new Error(`Unable to load jump lyric: ${JUMP_LYRIC_FILE}`);
-    return { data: await response.arrayBuffer(), error: null };
-  } catch (error) {
-    return { data: null, error };
-  }
-})();
+const MUSIC_BUS_GAIN = 0.28;
 const mixAudioFetches = Object.entries(MIX_AUDIO_FILES).map(async ([name, url]) => {
   try {
     const response = await fetch(url);
@@ -473,11 +481,16 @@ const mixAudioFetches = Object.entries(MIX_AUDIO_FILES).map(async ([name, url]) 
 
 const state = {
   running: false,
+  paused: false,
   over: false,
   locked: false,
   level: 0,
+  levelStartScore: 0,
+  levelTilesExploded: 0,
+  levelBestChain: 0,
   score: 0,
   rounds: 0,
+  progressDecayRemaining: LEVELS[0].decayGrace,
   lives: 3,
   time: LEVELS[0].time,
   currentTile: null,
@@ -494,6 +507,7 @@ const state = {
   nextQueue: [],
   transitionTimer: 0,
   pendingLevelComplete: false,
+  levelResultOpen: false,
   chain: 0,
   shake: 0,
   hitStop: 0,
@@ -501,7 +515,6 @@ const state = {
   audio: null,
   audioOutput: null,
   sfxBus: null,
-  lyricBus: null,
   musicBus: null,
   musicFilter: null,
   noiseBuffer: null,
@@ -515,11 +528,6 @@ const state = {
   lastTimeCue: null,
   landingAge: 0,
   landingStrength: 0,
-  jumpLyricBuffer: null,
-  jumpLyricLoad: null,
-  jumpLyricIndex: 0,
-  jumpLyricLastAt: -Infinity,
-  activeJumpLyricSources: new Set(),
   audioEvents: []
 };
 
@@ -557,54 +565,17 @@ function ensureAudio() {
     state.sfxBus.gain.value = 1;
     state.sfxBus.connect(compressor);
 
-    state.lyricBus = state.audio.createGain();
-    state.lyricBus.gain.value = JUMP_LYRIC_BUS_GAIN;
-    state.lyricBus.connect(compressor);
-
     state.musicBus = state.audio.createGain();
     state.musicBus.gain.value = MUSIC_BUS_GAIN;
     state.musicFilter = state.audio.createBiquadFilter();
     state.musicFilter.type = 'highpass';
-    state.musicFilter.frequency.value = 145;
+    state.musicFilter.frequency.value = 120;
     state.musicFilter.Q.value = 0.45;
     state.musicBus.connect(state.musicFilter).connect(compressor);
   }
-  loadJumpLyrics(state.audio);
   loadMixAudio(state.audio);
   if (state.audio.state === 'suspended') state.audio.resume();
   return state.audio;
-}
-
-function syncJumpLyricState(status = null) {
-  document.documentElement.dataset.jumpLyrics = status
-    ?? (state.jumpLyricBuffer ? 'ready' : state.jumpLyricLoad ? 'loading' : 'not-started');
-  document.documentElement.dataset.jumpLyricLoaded = String(state.jumpLyricBuffer ? 1 : 0);
-  document.documentElement.dataset.jumpLyricNext = JUMP_LYRIC_TEXT[state.jumpLyricIndex] ?? JUMP_LYRIC_TEXT[0];
-  document.documentElement.dataset.jumpLyricPhrase = JUMP_LYRIC_PHRASE;
-  document.documentElement.dataset.jumpLyricMode = 'continuous-master-crossfade';
-  document.documentElement.dataset.jumpLyricCrossfade = String(JUMP_LYRIC_CROSSFADE);
-}
-
-function loadJumpLyrics(context) {
-  if (state.jumpLyricLoad) return state.jumpLyricLoad;
-  syncJumpLyricState('loading');
-  state.jumpLyricLoad = jumpLyricFetch
-    .then(({ data, error }) => {
-      if (error || !data) throw error ?? new Error('Jump lyric master is empty.');
-      return context.decodeAudioData(data.slice(0));
-    })
-    .then((buffer) => {
-      state.jumpLyricBuffer = buffer;
-      syncJumpLyricState('ready');
-      return buffer;
-    })
-    .catch((error) => {
-      console.warn('Continuous jump lyric master could not be loaded; using synthesized bounce sounds.', error);
-      state.jumpLyricBuffer = null;
-      syncJumpLyricState('fallback');
-      return null;
-    });
-  return state.jumpLyricLoad;
 }
 
 function loadMixAudio(context) {
@@ -682,92 +653,23 @@ function startSampledMusic() {
   };
   source.start();
   state.musicSource = source;
-  state.audioEvents.push({ name: 'musicStart', style: 'cute-toy-lyric-safe-sample', at: Math.round(performance.now()) });
+  state.audioEvents.push({ name: 'musicStart', style: 'bouncy-party-loop', bpm: 124, at: Math.round(performance.now()) });
   if (state.audioEvents.length > 32) state.audioEvents.shift();
-  return true;
-}
-
-function stopJumpLyrics() {
-  for (const entry of state.activeJumpLyricSources) {
-    try { entry.source.stop(); }
-    catch { /* The source may already have ended. */ }
-    entry.source.disconnect();
-    entry.gain.disconnect();
-  }
-  state.activeJumpLyricSources.clear();
-}
-
-function resetJumpLyricPhrase() {
-  stopJumpLyrics();
-  state.jumpLyricIndex = 0;
-  state.jumpLyricLastAt = -Infinity;
-  document.documentElement.dataset.jumpLyricLegato = 'false';
-  syncJumpLyricState();
-}
-
-function playJumpLyric() {
-  if (!state.sound) return false;
-  const context = ensureAudio();
-  const buffer = state.jumpLyricBuffer;
-  if (!buffer || !state.lyricBus) return false;
-
-  const now = performance.now();
-  const elapsed = now - state.jumpLyricLastAt;
-  if (elapsed > JUMP_LYRIC_RESET_GAP) {
-    state.jumpLyricIndex = 0;
-    stopJumpLyrics();
-  }
-  const index = state.jumpLyricIndex;
-  const sourceSlot = buffer.duration / JUMP_LYRIC_TEXT.length;
-  const offset = Math.min(buffer.duration - 0.001, index * sourceSlot);
-  const duration = Math.min(buffer.duration - offset, JUMP_LYRIC_TRIGGER_INTERVAL + JUMP_LYRIC_CROSSFADE);
-  const legato = elapsed <= JUMP_LYRIC_LEGATO_GAP * 1000;
-  document.documentElement.dataset.jumpLyricLegato = String(legato);
-  const overlapProgress = legato
-    ? Math.min(1, Math.max(0, (elapsed / 1000 - JUMP_LYRIC_TRIGGER_INTERVAL) / JUMP_LYRIC_CROSSFADE))
-    : 0;
-  const fadeIn = Math.min(duration * 0.3, legato ? JUMP_LYRIC_CROSSFADE * (1 - overlapProgress) : 0.006);
-  const fadeInStart = legato ? Math.max(0.0001, overlapProgress) : 0.0001;
-  const fadeOut = Math.min(JUMP_LYRIC_CROSSFADE, duration * 0.28);
-  const source = context.createBufferSource();
-  const gain = context.createGain();
-  source.buffer = buffer;
-  source.connect(gain).connect(state.lyricBus);
-  const start = context.currentTime;
-  const fadeOutAt = Math.max(start + fadeIn, start + duration - fadeOut);
-  gain.gain.setValueAtTime(fadeInStart, start);
-  gain.gain.linearRampToValueAtTime(1, start + fadeIn);
-  gain.gain.setValueAtTime(1, fadeOutAt);
-  gain.gain.linearRampToValueAtTime(0.0001, start + duration);
-  const entry = { source, gain };
-  state.activeJumpLyricSources.add(entry);
-  source.onended = () => {
-    state.activeJumpLyricSources.delete(entry);
-    source.disconnect();
-    gain.disconnect();
-  };
-  source.start(start, offset, duration);
-  state.jumpLyricIndex = (index + 1) % JUMP_LYRIC_TEXT.length;
-  state.jumpLyricLastAt = now;
-  state.audioEvents.push({ name: 'jumpLyric', lyric: JUMP_LYRIC_TEXT[index], lyricIndex: index, legato, at: Math.round(now) });
-  if (state.audioEvents.length > 32) state.audioEvents.shift();
-  duckMusic(0.34, 0.3);
-  syncJumpLyricState('ready');
   return true;
 }
 
 function syncAudioState() {
   document.documentElement.dataset.audioState = state.audio?.state ?? 'not-started';
-  document.documentElement.dataset.musicStyle = 'cute-toy-lyric-safe-sample';
-  document.documentElement.dataset.musicPulse = 'none';
-  document.documentElement.dataset.audioMix = 'lyric-led-character-priority';
-  document.documentElement.dataset.musicPalette = 'toy-piano-marimba-kalimba';
+  document.documentElement.dataset.musicStyle = 'bouncy-party-loop';
+  document.documentElement.dataset.musicPulse = '128bpm-eighth-note';
+  document.documentElement.dataset.audioMix = 'bouncy-party-hop-v92';
+  document.documentElement.dataset.musicPalette = 'warm-marimba-toy-piano-soft-drum-shaker';
   document.documentElement.dataset.mixAudio = state.mixAudioStatus;
   document.documentElement.dataset.mixAudioLoaded = String(Object.values(state.mixAudioBuffers).filter(Boolean).length);
-  document.documentElement.dataset.musicTempo = 'free';
+  document.documentElement.dataset.musicTempo = String(RHYTHM_BPM);
   document.documentElement.dataset.musicStep = String(state.musicStep);
   document.documentElement.dataset.sound = String(state.sound);
-  syncJumpLyricState();
+  document.documentElement.dataset.paused = String(state.paused);
   const soundButton = document.querySelector('#sound');
   const soundIcon = document.querySelector('#soundIcon');
   soundButton?.setAttribute('aria-pressed', String(state.sound));
@@ -846,23 +748,23 @@ function noiseSnap(duration = 0.065, volume = 0.012, frequency = 4300, delay = 0
   source.start(start, Math.random() * 0.18, duration);
 }
 
+function playHopBeat() {
+  if (playMixCue('hopBeat')) return;
+  voice({ from: 178, peak: 224, to: 132, duration: 0.09, volume: 0.024, attack: 0.004 });
+  noisePuff(0.038, 0.0018, 680);
+}
+
 function sfx(name, detail = {}) {
   if (!state.sound) return;
   state.audioEvents.push({ name, at: Math.round(performance.now()), ...detail });
   if (state.audioEvents.length > 32) state.audioEvents.shift();
+  if (SILENT_NEGATIVE_CUES.has(name)) return;
   if (name === 'jump') {
-    if (!playJumpLyric()) {
-      voice({ from: 310, peak: 545, to: 455, duration: 0.115, volume: 0.026, attack: 0.007 });
-      voice({ from: 930, to: 720, duration: 0.052, volume: 0.005, delay: 0.022, type: 'triangle' });
-    }
+    playHopBeat();
   } else if (name === 'bounce') {
-    const note = 326 + (detail.color ?? 0) * 7;
-    if (!playJumpLyric()) voice({ from: note, peak: note * 1.48, to: note * 1.22, duration: 0.1, volume: 0.019, attack: 0.006 });
-    noisePuff(0.045, 0.0022, 760);
+    playHopBeat();
   } else if (name === 'land') {
-    const note = 214 + (detail.color ?? 0) * 6;
-    voice({ from: note * 1.18, to: note * 0.84, duration: 0.082, volume: 0.012, type: 'sine', attack: 0.009 });
-    noisePuff(0.052, 0.0032, 720);
+    noisePuff(0.04, 0.0012, 640);
   } else if (name === 'collect') {
     [760, 1050, 1480].forEach((note, index) => voice({ from: note, to: note * 1.08, duration: 0.13, volume: 0.025 - index * 0.003, delay: index * 0.048, type: index === 1 ? 'triangle' : 'sine' }));
   } else if (name === 'ignite' || name === 'warn') {
@@ -937,6 +839,9 @@ function sfx(name, detail = {}) {
   } else if (name === 'countdown') {
     const note = detail.second === 1 ? 1040 : 820;
     voice({ from: note, to: note * 0.965, duration: detail.second === 1 ? 0.15 : 0.085, volume: 0.011, type: 'sine' });
+  } else if (name === 'progressLost') {
+    voice({ from: 520, peak: 470, to: 360, duration: 0.16, volume: 0.012, type: 'triangle' });
+    noisePuff(0.08, 0.0025, 620);
   } else if (name === 'timeout') {
     if (!playMixCue('timeout')) {
       [660, 520, 390].forEach((note, index) => voice({ from: note, to: note * 0.91, duration: index === 2 ? 0.5 : 0.22, volume: 0.024, delay: index * 0.21, type: index === 1 ? 'triangle' : 'sine', attack: 0.025 }));
@@ -1078,6 +983,101 @@ function showToast(text) {
   showToast.timer = setTimeout(() => ui.toast.classList.remove('show'), 1450);
 }
 
+function readLeaderboard() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(LEADERBOARD_STORAGE_KEY) || '[]');
+    if (!Array.isArray(stored)) return [];
+    return stored.filter((entry) => Number.isFinite(entry?.score) && Number.isFinite(entry?.level));
+  } catch {
+    return [];
+  }
+}
+
+function saveLeaderboard(entries) {
+  try { localStorage.setItem(LEADERBOARD_STORAGE_KEY, JSON.stringify(entries)); }
+  catch { /* Storage can be unavailable in private browsing. */ }
+}
+
+function renderLeaderboard(entries) {
+  if (!ui.leaderboard) return;
+  ui.leaderboard.replaceChildren(...entries.slice(0, 5).map((entry, index) => {
+    const item = document.createElement('li');
+    const rank = document.createElement('span');
+    const level = document.createElement('strong');
+    const score = document.createElement('b');
+    rank.textContent = `#${index + 1}`;
+    level.textContent = `第${entry.level}层`;
+    score.textContent = `${Math.max(0, Math.floor(entry.score))} 分`;
+    item.append(rank, level, score);
+    return item;
+  }));
+}
+
+function recordLeaderboard(win) {
+  const entries = readLeaderboard();
+  entries.push({
+    score: Math.max(0, Math.floor(state.score)),
+    level: win ? LEVELS.length : state.level + 1,
+    won: Boolean(win),
+    at: Date.now()
+  });
+  entries.sort((a, b) => b.score - a.score || b.level - a.level || b.at - a.at);
+  const top = entries.slice(0, 5);
+  saveLeaderboard(top);
+  return top;
+}
+
+function showLevelResult() {
+  if (!ui.levelResult || state.over) return;
+  const level = LEVELS[state.level];
+  const isFinal = state.level === LEVELS.length - 1;
+  state.levelResultOpen = true;
+  ui.levelResultKicker.textContent = isFinal ? '全部关卡完成' : '本关完成';
+  ui.levelResultTitle.textContent = `第 ${state.level + 1} 层完成`;
+  ui.levelResultScore.textContent = Math.max(0, state.score - state.levelStartScore).toString();
+  ui.levelResultTiles.textContent = String(state.levelTilesExploded);
+  ui.levelResultRounds.textContent = `${state.rounds}/${level.roundGoal}`;
+  ui.levelResultText.textContent = isFinal ? '全部关卡完成，查看你的最终排行榜。' : '准备好后进入下一层。';
+  ui.levelContinue.querySelector('span').textContent = isFinal ? '查看总成绩' : '继续下一层';
+  ui.levelResult.classList.add('show');
+  ui.levelResult.setAttribute('aria-hidden', 'false');
+  ui.levelResult.inert = false;
+  ui.levelContinue.focus({ preventScroll: true });
+}
+
+function continueFromLevelResult() {
+  if (!state.levelResultOpen) return;
+  state.levelResultOpen = false;
+  ui.levelResult.classList.remove('show');
+  ui.levelResult.setAttribute('aria-hidden', 'true');
+  ui.levelResult.inert = true;
+  if (state.level === LEVELS.length - 1) finish(true);
+  else startLevel(state.level + 1);
+}
+
+function pauseForBackground() {
+  if (!state.running || state.over || state.paused) return;
+  state.paused = true;
+  state.queuedMove = null;
+  pointerStart = null;
+  swipePad.classList.remove('show');
+  stopMixCues();
+  stopMusic();
+  showToast('已暂停，返回继续');
+  refreshHud();
+}
+
+function resumeFromBackground() {
+  if (!state.paused || state.over) return;
+  state.paused = false;
+  if (state.sound) {
+    ensureAudio();
+    startMusic();
+  }
+  showToast('继续挑战');
+  refreshHud();
+}
+
 function refreshNext() {
   ui.next.replaceChildren(...state.nextQueue.slice(0, 4).map((color) => {
     const cube = document.createElement('i');
@@ -1117,6 +1117,9 @@ function refreshHud() {
     score: state.score,
     rounds: state.rounds,
     roundGoal: LEVELS[state.level].roundGoal,
+    progressDecayRemaining: Number(state.progressDecayRemaining.toFixed(3)),
+    progressDecayGrace: LEVELS[state.level].decayGrace,
+    progressDecayInterval: LEVELS[state.level].decayInterval,
     tilesPerRound: TILES_PER_ROUND,
     levels: LEVELS.length,
     difficulty: LEVELS[state.level].difficulty,
@@ -1126,18 +1129,22 @@ function refreshHud() {
     refill: state.refillRemaining,
     chain: state.chain,
     hitStop: state.hitStop,
+    paused: state.paused,
     shockwaves: shockwaves.length,
     particles: particles.length,
     locked: state.locked,
     pendingLevelComplete: state.pendingLevelComplete,
     sound: state.sound,
     audioState: state.audio?.state ?? 'not-started',
-    musicStyle: 'cute-toy-lyric-safe-sample',
-    musicPulse: 'none',
-    audioMix: 'lyric-led-character-priority',
-    musicTempo: 'free',
+    musicStyle: 'bouncy-party-loop',
+    musicPulse: '128bpm-eighth-note',
+    audioMix: 'bouncy-party-hop-v92',
+    musicTempo: String(RHYTHM_BPM),
+    rhythmBpm: RHYTHM_BPM,
+    rhythmBeatSeconds: RHYTHM_BEAT_SECONDS,
     mixAudioStatus: state.mixAudioStatus,
     mixAudioLoaded: Object.values(state.mixAudioBuffers).filter(Boolean).length,
+    hopBeatLoaded: state.mixAudioBuffers.hopBeat ? 1 : 0,
     recentAudioEvents: state.audioEvents.slice(-12),
     characterMode: 'procedural-low-poly-3d',
     respawning: state.respawning,
@@ -1150,12 +1157,36 @@ function refreshHud() {
   });
 }
 
+function resetProgressDecay() {
+  state.progressDecayRemaining = LEVELS[state.level].decayGrace;
+}
+
+function updateProgressDecay(delta) {
+  const level = LEVELS[state.level];
+  if (!state.running || state.over || state.locked || state.respawning
+    || state.pendingLevelComplete || state.rounds <= 0 || state.pendingRewards.size > 0) return;
+  state.progressDecayRemaining -= delta;
+  let lost = 0;
+  while (state.rounds > 0 && state.progressDecayRemaining <= 0) {
+    state.rounds -= 1;
+    lost += 1;
+    state.progressDecayRemaining += level.decayInterval;
+  }
+  if (!lost) return;
+  sfx('progressLost', { amount: lost });
+  showToast(`爆破回合 -${lost}`);
+  refreshHud();
+}
+
 function clearBonus(tile) {
-  if (!tile?.userData.bonus) return;
-  const bonus = tile.userData.bonus;
-  tile.remove(bonus);
-  bonus.material.dispose();
-  tile.userData.bonus = null;
+  if (!tile) return;
+  if (tile.userData.bonus) {
+    const bonus = tile.userData.bonus;
+    tile.remove(bonus);
+    bonus.material.dispose();
+    tile.userData.bonus = null;
+  }
+  tile.userData.pendingBonus = null;
 }
 
 const BONUS_DEFS = [
@@ -1167,8 +1198,39 @@ const BONUS_DEFS = [
   { name: '金条', value: 1450, color: 0xffbd35, emissive: 0x8a4e00, geometry: new RoundedBoxGeometry(0.58, 0.24, 0.34, 1, 0.06) }
 ];
 
-function spawnBonus(rank = 0, tileCount = null) {
+function attachBonus(tile, rank, tileCount) {
+  if (!tile || tile.userData.bonus) return false;
+  const definition = BONUS_DEFS[Math.min(BONUS_DEFS.length - 1, Math.max(0, rank))];
+  const bonus = new THREE.Mesh(definition.geometry, lowPolyMaterial(definition.color, {
+    emissive: definition.emissive,
+    emissiveIntensity: 0.22
+  }));
+  bonus.position.y = 1.03;
+  bonus.castShadow = true;
+  bonus.userData = {
+    phase: Math.random() * Math.PI * 2,
+    reward: definition.value,
+    label: definition.name,
+    rank: BONUS_DEFS.indexOf(definition),
+    sourceTiles: tileCount
+  };
+  tile.add(bonus);
+  tile.userData.bonus = bonus;
+  tile.userData.pendingBonus = null;
+  return true;
+}
+
+function spawnBonus(rank = 0, tileCount = null, anchorTile = null) {
   if (!state.running || state.over) return;
+  if (anchorTile) {
+    if (anchorTile.userData.bonus || anchorTile.userData.pendingBonus) return;
+    if (anchorTile.userData.state !== 'growing' && anchorTile.userData.state !== 'solid') {
+      anchorTile.userData.pendingBonus = { rank, tileCount };
+      return;
+    }
+    attachBonus(anchorTile, rank, tileCount);
+    return;
+  }
   const candidates = tiles.filter((tile) => tile.userData.state === 'solid' && tile !== state.currentTile && !tile.userData.bonus);
   if (!candidates.length) {
     schedule(() => spawnBonus(rank, tileCount), 240);
@@ -1203,13 +1265,19 @@ function collectBonus(tile) {
   sfx('collect');
 }
 
-function startLevel(index) {
+function startLevel(index, { silent = false } = {}) {
   cancelScheduled();
   clearEffects();
   state.level = index;
+  state.levelStartScore = state.score;
+  state.levelTilesExploded = 0;
+  state.levelBestChain = 0;
   state.rounds = 0;
+  state.progressDecayRemaining = LEVELS[index].decayGrace;
   state.time = LEVELS[index].time;
   state.locked = false;
+  state.paused = false;
+  state.levelResultOpen = false;
   state.transitionTimer = 0;
   state.pendingLevelComplete = false;
   state.lastTimeCue = null;
@@ -1222,7 +1290,6 @@ function startLevel(index) {
   state.landingStrength = 0;
   state.respawning = false;
   state.invulnerable = 0;
-  resetJumpLyricPhrase();
   state.nextQueue = [];
   fillNextQueue();
   randomizeBoard();
@@ -1242,7 +1309,7 @@ function startLevel(index) {
   state.falling = false;
   refreshHud();
   showToast(`第 ${index + 1}/${LEVELS.length} 层 · ${LEVELS[index].name} · ${LEVELS[index].difficulty}`);
-  sfx(index === 0 ? 'ready' : 'levelStart', { level: index });
+  if (!silent) sfx(index === 0 ? 'ready' : 'levelStart', { level: index });
 }
 
 function reset() {
@@ -1251,15 +1318,26 @@ function reset() {
   ensureAudio();
   if (state.sound) startMusic();
   state.running = true;
+  state.paused = false;
   state.over = false;
   state.score = 0;
+  state.levelStartScore = 0;
+  state.levelTilesExploded = 0;
+  state.levelBestChain = 0;
   state.chain = 0;
   state.lives = MAX_LIVES;
   state.audioEvents = [];
   state.respawning = false;
   state.invulnerable = 0;
   ui.intro.classList.remove('show');
+  ui.intro.setAttribute('aria-hidden', 'true');
+  ui.intro.inert = true;
   ui.result.classList.remove('show');
+  ui.result.setAttribute('aria-hidden', 'true');
+  ui.result.inert = true;
+  ui.levelResult.classList.remove('show');
+  ui.levelResult.setAttribute('aria-hidden', 'true');
+  ui.levelResult.inert = true;
   startLevel(0);
   if (tutorialPending && isMobileTutorialVisit() && (TUTORIAL_QUERY === '1' || !hasSeenTutorial())) {
     tutorialPending = false;
@@ -1269,20 +1347,27 @@ function reset() {
 
 function finish(win, reason = '', outcome = 'gameOver') {
   if (state.over) return;
+  state.paused = false;
+  state.levelResultOpen = false;
   cancelScheduled();
   state.running = false;
   state.over = true;
   state.locked = true;
   state.queuedMove = null;
   pointerStart = null;
-  stopJumpLyrics();
   stopMixCues();
   stopMusic();
   $('#finalScore').textContent = state.score;
+  renderLeaderboard(recordLeaderboard(win));
   $('#resultTag').textContent = win ? '全部通关' : '挑战结束';
   $('#resultTitle').textContent = win ? '方阵大师' : reason;
   $('#resultText').textContent = win ? `${LEVELS.length} 层方块风暴全部完成。` : '看准警告，在爆炸前跳到安全方块。';
-  schedule(() => ui.result.classList.add('show'), 420);
+  schedule(() => {
+    ui.result.classList.add('show');
+    ui.result.setAttribute('aria-hidden', 'false');
+    ui.result.inert = false;
+    ui.restart.focus({ preventScroll: true });
+  }, 420);
   sfx(win ? 'fullClear' : outcome);
 }
 
@@ -1318,7 +1403,7 @@ function hopTo(rowDelta, colDelta, silentStart = false) {
 }
 
 function requestMove(rowDelta, colDelta, haptic = false, silentStart = false) {
-  if (!state.running || state.locked || state.falling) return false;
+  if (!state.running || state.paused || state.locked || state.falling) return false;
   if (state.hop || !state.grounded || !state.currentTile) {
     if (state.hop) {
       state.queuedMove = [rowDelta, colDelta];
@@ -1332,20 +1417,55 @@ function requestMove(rowDelta, colDelta, haptic = false, silentStart = false) {
   return accepted;
 }
 
+function keepEscapeTile(group) {
+  if (group.length <= MAX_COLLAPSING_TILES) return group;
+  const current = state.currentTile;
+  const safeCandidates = group.filter((tile) => tile.userData.state === 'solid');
+  const keepPool = safeCandidates.length ? safeCandidates : group;
+  const keep = current
+    ? [...keepPool].sort((a, b) => {
+      const distanceA = Math.hypot(a.userData.row - current.userData.row, a.userData.col - current.userData.col);
+      const distanceB = Math.hypot(b.userData.row - current.userData.row, b.userData.col - current.userData.col);
+      return distanceB - distanceA;
+    })[0]
+    : keepPool[keepPool.length - 1];
+  return group.filter((tile) => tile !== keep);
+}
+
 function triggerMatch(tile) {
-  const group = connectedMatch(tile, true, true);
+  let group = connectedMatch(tile, true, true);
   const bursting = group.filter((member) => member.userData.state === 'bursting');
   if (bursting.length) {
-    const added = extendBurstingGroup(group, bursting);
+    // Keep unrelated warning batches isolated. Without this guard, a solid
+    // path touching two warningIds can merge both explosions and clear the
+    // entire board at once.
+    const warningId = bursting.reduce((earliest, member) => (
+      member.userData.timer < earliest.timer ? member : earliest
+    ), bursting[0]).userData.warningId;
+    group = group.filter((member) => (
+      member.userData.state === 'solid' || member.userData.warningId === warningId
+    ));
+    group = keepEscapeTile(group);
+    const activeBursting = group.filter((member) => member.userData.state === 'bursting');
+    const added = extendBurstingGroup(group, activeBursting);
     if (added.length) showToast(`${added.length} 格接入爆破 · 继续撤离`);
     return added.length ? group : [];
   }
   const flashing = group.filter((member) => member.userData.state === 'warn');
   if (flashing.length) {
-    const added = extendWarningGroup(group, flashing);
+    const warningId = flashing.reduce((earliest, member) => (
+      member.userData.timer < earliest.timer ? member : earliest
+    ), flashing[0]).userData.warningId;
+    group = group.filter((member) => (
+      member.userData.state === 'solid' || member.userData.warningId === warningId
+    ));
+    group = keepEscapeTile(group);
+    const activeFlashing = group.filter((member) => member.userData.state === 'warn');
+    const added = extendWarningGroup(group, activeFlashing);
     if (added.length) showToast(`${added.length} 格加入闪烁 · 快撤离`);
     return added.length ? group : [];
   }
+  group = keepEscapeTile(group);
   if (group.length < 4) return [];
   igniteTiles(group, 0, LEVELS[state.level].warning);
   showToast(`${group.length} 格连通 · 快撤离`);
@@ -1400,7 +1520,10 @@ function extendBurstingGroup(group, bursting) {
   const warningId = bursting[0].userData.warningId;
   const pendingReward = state.pendingRewards.get(warningId);
   if (pendingReward) pendingReward.tileCount += added.length;
-  else state.pendingRewards.set(warningId, { tileCount: bursting.filter((member) => member.userData.warningId === warningId).length + added.length });
+  else state.pendingRewards.set(warningId, {
+    tileCount: bursting.filter((member) => member.userData.warningId === warningId).length + added.length,
+    anchorTile: added[0]
+  });
   const nextBurstIndex = Math.max(...bursting.map((member) => member.userData.burstIndex || 0)) + 1;
   const activeRemaining = Math.max(...bursting.map((member) => Math.max(0, member.userData.timer)));
   const escapeWindow = HOP_DURATION + 0.08;
@@ -1416,6 +1539,8 @@ function extendBurstingGroup(group, bursting) {
   }
   const multiplier = chainDepth + 1;
   const points = added.length * 50 * multiplier;
+  state.levelTilesExploded += added.length;
+  state.levelBestChain = Math.max(state.levelBestChain, multiplier);
   state.refillRemaining += added.length;
   state.score += points;
   refreshHud();
@@ -1497,6 +1622,7 @@ function loseLife(reason, cause = 'fall') {
 }
 
 function explodeGroup(group) {
+  group = keepEscapeTile(group);
   if (!group.length) return;
   const playerCaught = !state.respawning && state.invulnerable <= 0
     && state.grounded && state.currentTile && group.includes(state.currentTile);
@@ -1515,13 +1641,16 @@ function explodeGroup(group) {
       + index * EXPLOSION_TIMING.burstStagger;
     setBurstingTile(tile, timer, index, tile.userData.warningId, chainDepth);
   }
-  state.pendingRewards.set(group[0].userData.warningId, { tileCount: group.length });
+  const anchorTile = ordered.find((tile) => tile !== state.currentTile) || ordered[0];
+  state.pendingRewards.set(group[0].userData.warningId, { tileCount: group.length, anchorTile });
   spawnShockwave(group, chainDepth);
   state.hitStop = Math.min(0.085, 0.052 + chainDepth * 0.009);
   state.shake = Math.min(0.5, 0.16 + group.length * 0.021 + chainDepth * 0.055);
   sfx('explode', { chain: chainDepth + 1, size: group.length });
   if (!state.running) return;
   const multiplier = chainDepth + 1;
+  state.levelTilesExploded += group.length;
+  state.levelBestChain = Math.max(state.levelBestChain, multiplier);
   const points = group.length * 50 * multiplier;
   state.chain = multiplier;
   state.refillRemaining += group.length;
@@ -1658,6 +1787,11 @@ renderer.domElement.addEventListener('pointerup', (event) => {
 renderer.domElement.addEventListener('pointercancel', () => {
   pointerStart = null;
   swipePad.classList.remove('show');
+});
+
+addEventListener('visibilitychange', () => {
+  if (document.hidden) pauseForBackground();
+  else resumeFromBackground();
 });
 
 function updateHeldInput() {
@@ -1835,6 +1969,11 @@ function updateTiles(delta, elapsed) {
         tile.scale.set(0.78, 0.06, 0.78);
         applyColor(tile, takeNextColor());
         sfx('grow', { color: data.color });
+        if (data.pendingBonus) {
+          const pending = data.pendingBonus;
+          data.pendingBonus = null;
+          attachBonus(tile, pending.rank, pending.tileCount);
+        }
       }
     } else if (data.state === 'growing') {
       data.timer -= delta;
@@ -1876,11 +2015,12 @@ function updateTiles(delta, elapsed) {
     state.pendingRewards.delete(warningId);
     const gainedRounds = roundsForTileCount(reward.tileCount);
     state.rounds += gainedRounds;
+    if (gainedRounds > 0) resetProgressDecay();
     if (state.rounds >= LEVELS[state.level].roundGoal) state.pendingLevelComplete = true;
     refreshHud();
     showToast(`${reward.tileCount} 格爆破 · +${gainedRounds} 回`);
     const rewardRank = rewardRankForTileCount(reward.tileCount);
-    if (rewardRank >= 0) schedule(() => spawnBonus(rewardRank, reward.tileCount), 240);
+    if (rewardRank >= 0) schedule(() => spawnBonus(rewardRank, reward.tileCount, reward.anchorTile), 240);
   }
   if (QA_MODE) {
     renderer.domElement.dataset.qaState = JSON.stringify({
@@ -1889,6 +2029,11 @@ function updateTiles(delta, elapsed) {
       states: tiles.map((tile) => tile.userData.state),
       score: state.score,
       refill: state.refillRemaining,
+      rounds: state.rounds,
+      roundGoal: LEVELS[state.level].roundGoal,
+      pendingLevelComplete: state.pendingLevelComplete,
+      transitionTimer: Number(state.transitionTimer.toFixed(3)),
+      progressDecayRemaining: Number(state.progressDecayRemaining.toFixed(3)),
       warningTime: LEVELS[state.level].warning,
       hopDuration: HOP_DURATION,
       heldMoveInterval: HELD_MOVE_INTERVAL,
@@ -1952,17 +2097,24 @@ function updateWarningBeacon(elapsed) {
 }
 
 function beginLevelTransitionWhenSafe() {
-  if (!state.pendingLevelComplete || state.transitionTimer > 0 || state.over) return;
-  const boardBusy = tiles.some((tile) => tile.userData.state !== 'solid');
-  if (boardBusy || state.hop || state.falling || !state.grounded) return;
+  if (!state.pendingLevelComplete || state.transitionTimer > 0 || state.levelResultOpen || state.over) return;
+  // The level goal is a progress goal, not a refill goal. Once the final
+  // reward has been credited, settle immediately instead of waiting for every
+  // replacement tile; otherwise a completed level can appear stuck at 18/05.
+  // Keep the safety check so a player standing on the active warning still
+  // gets the normal fail result.
+  const currentState = state.currentTile?.userData.state;
+  const playerInDanger = currentState === 'warn' || currentState === 'bursting';
+  if (playerInDanger || state.hop || state.falling || !state.grounded) return;
   state.pendingLevelComplete = false;
   state.locked = true;
-  state.transitionTimer = 1.55;
+  state.transitionTimer = 0.28;
   showToast(`第 ${state.level + 1} 层完成`);
   sfx('levelClear');
 }
 
 function update(delta, elapsed) {
+  if (state.paused) return;
   if (state.hitStop > 0) {
     state.hitStop = Math.max(0, state.hitStop - delta);
     updateParticles(delta * 0.12);
@@ -1984,13 +2136,13 @@ function update(delta, elapsed) {
     if (state.running && state.transitionTimer > 0) {
       state.transitionTimer -= delta;
       if (state.transitionTimer <= 0) {
-        if (state.level === LEVELS.length - 1) finish(true);
-        else startLevel(state.level + 1);
+        showLevelResult();
       }
     }
     if (state.running) {
       updatePlayer(delta, elapsed);
       updateTiles(delta, elapsed);
+      updateProgressDecay(delta);
       beginLevelTransitionWhenSafe();
       updateWarningBeacon(elapsed);
       updateMusic();
@@ -2051,6 +2203,7 @@ loop();
 
 $('#start').addEventListener('click', reset);
 $('#restart').addEventListener('click', reset);
+$('#levelContinue').addEventListener('click', continueFromLevelResult);
 $('#sound').addEventListener('click', (event) => {
   state.sound = !state.sound;
   if (state.sound) {
@@ -2058,7 +2211,6 @@ $('#sound').addEventListener('click', (event) => {
     if (state.running) startMusic();
     sfx('toggle');
   } else {
-    stopJumpLyrics();
     stopMixCues();
     stopMusic();
   }
@@ -2080,6 +2232,9 @@ window.__bounceGrid = {
     score: state.score,
     rounds: state.rounds,
     roundGoal: LEVELS[state.level].roundGoal,
+    progressDecayRemaining: Number(state.progressDecayRemaining.toFixed(3)),
+    progressDecayGrace: LEVELS[state.level].decayGrace,
+    progressDecayInterval: LEVELS[state.level].decayInterval,
     tilesPerRound: TILES_PER_ROUND,
     levels: LEVELS.length,
     difficulty: LEVELS[state.level].difficulty,
@@ -2091,28 +2246,30 @@ window.__bounceGrid = {
     explosionTiming: { ...EXPLOSION_TIMING },
     rewardThresholds: [...REWARD_TILE_THRESHOLDS],
     pendingRewards: [...state.pendingRewards.values()].map(({ tileCount }) => tileCount),
+    pendingLevelComplete: state.pendingLevelComplete,
+    transitionTimer: Number(state.transitionTimer.toFixed(3)),
     time: state.time,
     lives: state.lives,
     refill: state.refillRemaining,
     respawning: state.respawning,
     invulnerable: state.invulnerable,
+    paused: state.paused,
+    levelResultOpen: state.levelResultOpen,
+    levelTilesExploded: state.levelTilesExploded,
+    levelBestChain: state.levelBestChain,
     sound: state.sound,
     inputMode: innerWidth <= 900 ? 'swipe' : 'keyboard-click-or-swipe',
     audioState: state.audio?.state ?? 'not-started',
-    musicStyle: 'cute-toy-lyric-safe-sample',
-    musicPulse: 'none',
-    audioMix: 'lyric-led-character-priority',
-    musicTempo: 'free',
+    musicStyle: 'bouncy-party-loop',
+    musicPulse: '128bpm-eighth-note',
+    audioMix: 'bouncy-party-hop-v92',
+    musicTempo: String(RHYTHM_BPM),
+    rhythmBpm: RHYTHM_BPM,
+    rhythmBeatSeconds: RHYTHM_BEAT_SECONDS,
     mixAudioStatus: state.mixAudioStatus,
     mixAudioLoaded: Object.values(state.mixAudioBuffers).filter(Boolean).length,
     musicStep: state.musicStep,
-    jumpLyricLoaded: state.jumpLyricBuffer ? 1 : 0,
-    jumpLyricMode: 'continuous-master-crossfade',
-    jumpLyricCrossfade: JUMP_LYRIC_CROSSFADE,
-    jumpLyricNextIndex: state.jumpLyricIndex,
-    jumpLyricNext: JUMP_LYRIC_TEXT[state.jumpLyricIndex],
-    jumpLyricPhrase: JUMP_LYRIC_PHRASE,
-    jumpLyricResetGap: JUMP_LYRIC_RESET_GAP,
+    hopBeatLoaded: state.mixAudioBuffers.hopBeat ? 1 : 0,
     recentAudioEvents: state.audioEvents.slice(-12),
     characterMode: 'procedural-low-poly-3d',
     matchRule: 'orthogonal-connected-4',
@@ -2123,4 +2280,7 @@ window.__bounceGrid = {
     }, {})
   })
 };
+// Build the first board behind the intro screen so the scene is never empty
+// during the first paint. This only prepares visuals; reset() starts the timer.
+startLevel(0, { silent: true });
 syncAudioState();

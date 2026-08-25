@@ -29,6 +29,15 @@ test('every level keeps time to build a larger connected group', () => {
   assert.ok(LEVELS.every((level) => level.warning >= 4.6));
 });
 
+test('progress decay starts forgiving and tightens on later levels', () => {
+  assert.deepEqual(LEVELS.map((level) => level.decayGrace), [18, 17, 16, 15, 14, 13, 12, 11]);
+  assert.deepEqual(LEVELS.map((level) => level.decayInterval), [9, 9, 8, 8, 7, 7, 6, 6]);
+  for (const level of LEVELS) {
+    assert.ok(level.decayGrace > level.decayInterval);
+    assert.ok(level.decayInterval >= 6);
+  }
+});
+
 test('burst collapse has a readable half-second cascade', () => {
   const fourTileLineFinish = EXPLOSION_TIMING.burstBase
     + 1.5 * EXPLOSION_TIMING.burstDistance

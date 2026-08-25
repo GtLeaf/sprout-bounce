@@ -50,13 +50,53 @@ test('first mobile visit teaches on the live board after starting the game', () 
 
 test('holding a swipe continues movement in the same direction', () => {
   assert.match(script, /pointerStart\?\.move && now >= pointerStart\.nextMoveAt/);
-  assert.match(script, /const HELD_MOVE_INTERVAL = 235/);
+  assert.match(script, /const HELD_MOVE_INTERVAL = Math\.round\(RHYTHM_BEAT_SECONDS \* 1000\)/);
   assert.match(script, /pointerStart\.nextMoveAt = now \+ HELD_MOVE_INTERVAL/);
+});
+
+test('mobile play pauses while the page is backgrounded and resumes cleanly', () => {
+  assert.match(script, /paused: false/);
+  assert.match(script, /function pauseForBackground\(\)[\s\S]*?stopMixCues\(\);[\s\S]*?stopMusic\(\)/);
+  assert.match(script, /function resumeFromBackground\(\)[\s\S]*?startMusic\(\)/);
+  assert.match(script, /addEventListener\('visibilitychange', \(\) => \{[\s\S]*?document\.hidden[\s\S]*?pauseForBackground\(\)[\s\S]*?resumeFromBackground\(\)/);
+  assert.match(script, /if \(!state\.running \|\| state\.paused \|\| state\.locked \|\| state\.falling\) return false/);
+  assert.match(script, /if \(state\.paused\) return;/);
+  assert.match(html, /id="toast"[^>]*role="status"[^>]*aria-live="polite"/);
+});
+
+test('intro and result overlays keep keyboard focus in the active flow', () => {
+  assert.match(html, /id="intro"[^>]*aria-hidden="false"/);
+  assert.match(html, /id="result"[^>]*aria-hidden="true"[^>]*inert/);
+  assert.match(script, /ui\.intro\.setAttribute\('aria-hidden', 'true'\)[\s\S]*?ui\.intro\.inert = true/);
+  assert.match(script, /ui\.result\.setAttribute\('aria-hidden', 'true'\)[\s\S]*?ui\.result\.inert = true/);
+  assert.match(script, /ui\.result\.setAttribute\('aria-hidden', 'false'\)[\s\S]*?ui\.result\.inert = false[\s\S]*?ui\.restart\.focus/);
+});
+
+test('each cleared level pauses on a settlement card and the final screen has a local leaderboard', () => {
+  assert.match(html, /id="levelResult"[^>]*aria-hidden="true"[^>]*inert/);
+  assert.match(html, /id="levelResultScore"/);
+  assert.match(html, /id="levelResultTiles"/);
+  assert.match(html, /id="levelResultRounds"/);
+  assert.match(html, /id="levelContinue"/);
+  assert.match(html, /class="leaderboard-block"[\s\S]*?id="leaderboard"/);
+  assert.match(script, /const LEADERBOARD_STORAGE_KEY = 'happy-jump-leaderboard-v1'/);
+  assert.match(script, /function showLevelResult\(\)[\s\S]*?state\.levelResultOpen = true[\s\S]*?ui\.levelContinue\.focus/);
+  assert.match(script, /function continueFromLevelResult\(\)[\s\S]*?startLevel\(state\.level \+ 1\)/);
+  assert.match(script, /state\.transitionTimer = 0\.28/);
+  assert.match(script, /const playerInDanger = currentState === 'warn' \|\| currentState === 'bursting'/);
+  assert.doesNotMatch(script, /const boardBusy = tiles\.some\(\(tile\) => tile\.userData\.state !== 'solid'\)/);
+  assert.match(script, /if \(state\.level === LEVELS\.length - 1\) finish\(true\)/);
+  assert.match(script, /function recordLeaderboard\(win\)[\s\S]*?saveLeaderboard\(top\)/);
+  assert.match(script, /renderLeaderboard\(recordLeaderboard\(win\)\)/);
+  assert.match(styles, /\.level-summary \{[\s\S]*?grid-template-columns: repeat\(3, 1fr\)/);
+  assert.match(styles, /#leaderboard \{[\s\S]*?list-style: none/);
 });
 
 
 test('single hops use the faster movement timing', () => {
-  assert.match(script, /const HOP_DURATION = 0\.25/);
+  assert.match(script, /const RHYTHM_BPM = 128/);
+  assert.match(script, /const RHYTHM_BEAT_SECONDS = 60 \/ RHYTHM_BPM \/ 2/);
+  assert.match(script, /const HOP_DURATION = RHYTHM_BEAT_SECONDS/);
   assert.match(script, /duration: HOP_DURATION/);
 });
 

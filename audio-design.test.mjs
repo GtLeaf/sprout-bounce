@@ -9,10 +9,25 @@ async function readPcmWavInfo(url) {
   const data = await readFile(url);
   assert.equal(data.toString('ascii', 0, 4), 'RIFF');
   assert.equal(data.toString('ascii', 8, 12), 'WAVE');
-  const channels = data.readUInt16LE(22);
-  const sampleRate = data.readUInt32LE(24);
-  const bitsPerSample = data.readUInt16LE(34);
-  const dataBytes = data.readUInt32LE(40);
+  let channels = 0;
+  let sampleRate = 0;
+  let bitsPerSample = 0;
+  let dataBytes = 0;
+  for (let offset = 12; offset + 8 <= data.length;) {
+    const chunk = data.toString('ascii', offset, offset + 4);
+    const chunkBytes = data.readUInt32LE(offset + 4);
+    if (chunk === 'fmt ') {
+      assert.equal(data.readUInt16LE(offset + 8), 1, 'audio must use PCM encoding');
+      channels = data.readUInt16LE(offset + 10);
+      sampleRate = data.readUInt32LE(offset + 12);
+      bitsPerSample = data.readUInt16LE(offset + 22);
+    } else if (chunk === 'data') {
+      dataBytes = chunkBytes;
+      break;
+    }
+    offset += 8 + chunkBytes + (chunkBytes % 2);
+  }
+  assert.ok(channels && sampleRate && bitsPerSample && dataBytes, 'WAV must contain fmt and data chunks');
   return {
     channels,
     sampleRate,
@@ -22,13 +37,13 @@ async function readPcmWavInfo(url) {
 }
 
 
-test('music is a cute toy-instrument bed that leaves the jump lyric in front', async () => {
-  assert.match(source, /bgm: 'assets\/audio\/mix-v84\/happyjump-bgm-cute-toy-loop\.wav'/);
-  assert.match(source, /const MUSIC_BUS_GAIN = 0\.3;/);
-  assert.match(source, /musicFilter\.frequency\.value = 145;/);
-  assert.match(source, /dataset\.musicStyle = 'cute-toy-lyric-safe-sample';/);
-  assert.match(source, /dataset\.musicPalette = 'toy-piano-marimba-kalimba';/);
-  assert.match(source, /document\.documentElement\.dataset\.musicPulse = 'none';/);
+test('party BGM stays lively without overpowering the hop feedback', async () => {
+  assert.match(source, /bgm: 'assets\/audio\/mix-v91\/happyjump-bgm-bouncy-party-v91\.wav'/);
+  assert.match(source, /const MUSIC_BUS_GAIN = 0\.28;/);
+  assert.match(source, /musicFilter\.frequency\.value = 120;/);
+  assert.match(source, /dataset\.musicStyle = 'bouncy-party-loop';/);
+  assert.match(source, /dataset\.musicPalette = 'warm-marimba-toy-piano-soft-drum-shaker';/);
+  assert.match(source, /document\.documentElement\.dataset\.musicPulse = '128bpm-eighth-note';/);
   assert.match(source, /if \(state\.musicSource \|\| state\.mixAudioStatus !== 'fallback'\)/);
   assert.match(source, /if \(step % 8 !== 0\) return;/);
   assert.match(source, /attack: 0\.65/);
@@ -37,54 +52,41 @@ test('music is a cute toy-instrument bed that leaves the jump lyric in front', a
   assert.doesNotMatch(source, /function musicPluck/);
   assert.doesNotMatch(source, /function musicAir/);
 
-  const info = await stat(new URL('./assets/audio/mix-v84/happyjump-bgm-cute-toy-loop.wav', import.meta.url));
-  assert.equal(info.size, 2822444, 'processed BGM should be a 16 second stereo PCM WAV');
-  const wav = await readPcmWavInfo(new URL('./assets/audio/mix-v84/happyjump-bgm-cute-toy-loop.wav', import.meta.url));
+  const info = await stat(new URL('./assets/audio/mix-v91/happyjump-bgm-bouncy-party-v91.wav', import.meta.url));
+  assert.ok(info.size > 2_300_000, 'party BGM should include the complete loop');
+  const wav = await readPcmWavInfo(new URL('./assets/audio/mix-v91/happyjump-bgm-bouncy-party-v91.wav', import.meta.url));
   assert.deepEqual({ channels: wav.channels, sampleRate: wav.sampleRate, bitsPerSample: wav.bitsPerSample }, { channels: 2, sampleRate: 44100, bitsPerSample: 16 });
-  assert.equal(wav.duration, 16);
+  assert.ok(Math.abs(wav.duration - 16) < 0.002, 'BGM should be a full 16-second loop');
 });
 
 
-test('held movement uses one legato bounce instead of stacked land and jump sounds', () => {
+test('held movement uses one hop beat instead of stacked land and jump sounds', () => {
   assert.match(source, /landOn\(hop\.target, Boolean\(queuedMove\)\)/);
   assert.match(source, /requestMove\(\.\.\.queuedMove, false, true\)/);
   assert.match(source, /sfx\(chained \? 'bounce' : 'land'/);
 });
 
 
-test('each hop advances the fourteen-character continuous apple lyric', async () => {
-  assert.match(source, /const JUMP_LYRIC_FILE = 'assets\/audio\/jump-lyrics-v85\/happyjump-apple-continuous-master\.wav';/);
-  assert.match(source, /const JUMP_LYRIC_TEXT = \['我', '是', '一', '个', '小', '苹', '果', '每', '天', '就', '爱', '跳', '跳', '乐'\];/);
-  assert.match(source, /const JUMP_LYRIC_RESET_GAP = 900;/);
-  assert.match(source, /const JUMP_LYRIC_TRIGGER_INTERVAL = HELD_MOVE_INTERVAL \/ 1000;/);
-  assert.match(source, /if \(elapsed > JUMP_LYRIC_RESET_GAP\) \{/);
-  assert.match(source, /if \(!playJumpLyric\(\)\) \{/);
-  assert.match(source, /if \(!playJumpLyric\(\)\) voice\(\{ from: note/);
-  assert.match(source, /state\.jumpLyricIndex = \(index \+ 1\) % JUMP_LYRIC_TEXT\.length;/);
+test('each jump and chained bounce use the same short hop beat instead of sliced vocals', async () => {
+  assert.match(source, /hopBeat: 'assets\/audio\/mix-v92\/happyjump-hop-soft-pop-v92\.wav'/);
+  assert.match(source, /MIX_CUE_GAINS = Object\.freeze\(\{ hopBeat: 0\.38,/);
+  assert.match(source, /function playHopBeat\(\) \{[\s\S]*?playMixCue\('hopBeat'\)/);
+  assert.match(source, /if \(name === 'jump'\) \{\s+playHopBeat\(\);\s+\} else if \(name === 'bounce'\) \{\s+playHopBeat\(\);/);
+  assert.doesNotMatch(source, /playJumpLyric|resetJumpLyric|JUMP_LYRIC|jumpLyricBuffer|lyricBus/i);
 
-  const wav = await readPcmWavInfo(new URL('./assets/audio/jump-lyrics-v85/happyjump-apple-continuous-master.wav', import.meta.url));
-  assert.deepEqual({ channels: wav.channels, sampleRate: wav.sampleRate, bitsPerSample: wav.bitsPerSample }, { channels: 1, sampleRate: 44100, bitsPerSample: 16 });
-  assert.ok(wav.duration >= 3 && wav.duration <= 3.1, 'continuous lyric master should contain one compact full phrase');
+  const wav = await readPcmWavInfo(new URL('./assets/audio/mix-v92/happyjump-hop-soft-pop-v92.wav', import.meta.url));
+  assert.deepEqual({ channels: wav.channels, sampleRate: wav.sampleRate, bitsPerSample: wav.bitsPerSample }, { channels: 1, sampleRate: 48000, bitsPerSample: 16 });
+  assert.ok(wav.duration <= 0.16, 'soft hop pop should stay short enough for rapid repeats');
 });
 
 
-test('jump lyric crossfades adjacent slices instead of cutting off the previous syllable', () => {
-  assert.match(source, /const JUMP_LYRIC_BUS_GAIN = 0\.7;/);
-  assert.match(source, /const JUMP_LYRIC_CROSSFADE = 0\.045;/);
-  assert.match(source, /const JUMP_LYRIC_LEGATO_GAP = 0\.52;/);
-  assert.match(source, /state\.lyricBus\.gain\.value = JUMP_LYRIC_BUS_GAIN;/);
-  assert.match(source, /const sourceSlot = buffer\.duration \/ JUMP_LYRIC_TEXT\.length;/);
-  assert.match(source, /dataset\.jumpLyricLegato = String\(legato\);/);
-  assert.match(source, /const overlapProgress = legato/);
-  assert.match(source, /JUMP_LYRIC_CROSSFADE \* \(1 - overlapProgress\)/);
-  assert.match(source, /source\.connect\(gain\)\.connect\(state\.lyricBus\);/);
-  assert.match(source, /gain\.gain\.linearRampToValueAtTime\(1, start \+ fadeIn\);/);
-  assert.match(source, /gain\.gain\.linearRampToValueAtTime\(0\.0001, start \+ duration\);/);
-  assert.match(source, /state\.activeJumpLyricSources\.add\(entry\);/);
-  assert.match(source, /source\.start\(start, offset, duration\);/);
-  assert.doesNotMatch(source, /activeJumpLyricSource: null/);
-  assert.match(source, /duckMusic\(0\.34, 0\.3\);/);
-  assert.match(source, /console\.warn\('Continuous jump lyric master could not be loaded; using synthesized bounce sounds\.'/);
+test('movement cadence follows 128 BPM eighth notes without delaying the first input', () => {
+  assert.match(source, /const RHYTHM_BPM = 128;/);
+  assert.match(source, /const RHYTHM_BEAT_SECONDS = 60 \/ RHYTHM_BPM \/ 2;/);
+  assert.match(source, /const HOP_DURATION = RHYTHM_BEAT_SECONDS;/);
+  assert.match(source, /const HELD_MOVE_INTERVAL = Math\.round\(RHYTHM_BEAT_SECONDS \* 1000\);/);
+  assert.match(source, /document\.documentElement\.dataset\.musicTempo = String\(RHYTHM_BPM\);/);
+  assert.match(source, /const accepted = hopTo\(rowDelta, colDelta, silentStart\);/);
 });
 
 
@@ -99,20 +101,21 @@ test('game outcomes have distinct audio feedback', () => {
 test('success and failure outcomes prefer generated samples with synthesized fallbacks', async () => {
   const cues = ['levelClear', 'fullClear', 'lifeLost', 'gameOver', 'timeout'];
   const durationRanges = {
-    levelClear: [1.2, 1.3],
-    fullClear: [1.2, 1.35],
-    lifeLost: [0.9, 1],
-    gameOver: [1.4, 1.5],
-    timeout: [0.8, 0.9]
+    levelClear: [1.1, 1.2],
+    fullClear: [1.65, 1.75],
+    lifeLost: [0.8, 0.9],
+    gameOver: [1.3, 1.4],
+    timeout: [0.78, 0.86]
   };
   for (const cue of cues) {
     assert.match(source, new RegExp(`playMixCue\\('${cue}'`));
     const file = cue.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
-    const info = await stat(new URL(`./assets/audio/mix-v84/happyjump-${file}.wav`, import.meta.url));
+    const suffix = `-party-v91`;
+    const info = await stat(new URL(`./assets/audio/mix-v91/happyjump-${file}${suffix}.wav`, import.meta.url));
     assert.ok(info.size > 44, `${cue} should include playable PCM data`);
-    const wav = await readPcmWavInfo(new URL(`./assets/audio/mix-v84/happyjump-${file}.wav`, import.meta.url));
+    const wav = await readPcmWavInfo(new URL(`./assets/audio/mix-v91/happyjump-${file}${suffix}.wav`, import.meta.url));
     assert.equal(wav.channels, 1, `${cue} should be mono so it stays centered on mobile speakers`);
-    assert.equal(wav.sampleRate, 44100);
+    assert.equal(wav.sampleRate, 48000);
     assert.equal(wav.bitsPerSample, 16);
     assert.ok(wav.duration >= durationRanges[cue][0] && wav.duration <= durationRanges[cue][1], `${cue} should stay concise`);
   }
