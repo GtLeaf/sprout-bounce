@@ -1,0 +1,16 @@
+{
+  "appid": "touristappid",
+  "compileType": "game",
+  "cloudfunctionRoot": "cloudfunctions/",
+  "description": "Happy Jump WeChat Mini Game",
+  "libVersion": "3.8.10",
+  "minigameRoot": "./",
+  "projectname": "happy-jump-wechat",
+  "setting": {
+    "checkSiteMap": false,
+    "es6": true,
+    "minified": true,
+    "postcss": true,
+    "urlCheck": true
+  }
+}

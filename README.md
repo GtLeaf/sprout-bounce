@@ -2,6 +2,12 @@
 
 完整开发包已内置 Three.js 和全部运行资源，不需要联网加载依赖。
 
+## 微信小游戏版本
+
+仓库现已包含独立的原生微信小游戏包 [`wechat-minigame`](wechat-minigame/README.md)。它使用 Canvas 运行，通过微信云开发的 `OpenID` 自动识别玩家、恢复历史成绩并维护全球排行榜；昵称和头像只在玩家点击微信原生授权按钮后保存。该版本不使用 Supabase 邮箱登录。
+
+微信小游戏不能直接运行网页 DOM/CSS，因此 GitHub Pages 网页版与微信小游戏版分别维护。微信开发者工具的导入、AppID、云环境、集合权限和云函数部署步骤见 `wechat-minigame/README.md`。
+
 ## 启动与开发
 
 - Windows 试玩：双击 `start-game.cmd`，浏览器会自动打开游戏。
