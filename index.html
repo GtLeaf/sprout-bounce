@@ -38,7 +38,10 @@
     <div class="intro-shade"></div>
     <div class="intro-copy">
       <h1><img class="game-logo" src="assets/happy-jump-logo-v80.png" alt="Happy Jump" draggable="false"></h1>
-      <button id="start" class="primary" type="button"><span>开始游戏</span><img class="control-icon" src="assets/ui-forward-v80.png" alt="" draggable="false"></button>
+      <div class="intro-actions">
+        <button id="start" class="primary" type="button"><span>开始游戏</span><img class="control-icon" src="assets/ui-forward-v80.png" alt="" draggable="false"></button>
+        <button id="introAccount" class="account-entry cloud-only" type="button" aria-haspopup="dialog" hidden>登录排行榜</button>
+      </div>
     </div>
   </section>
 
@@ -49,10 +52,42 @@
       <div class="score"><strong id="finalScore">0</strong><span>分</span></div>
       <p id="resultText">差一点完成本层目标。</p>
       <div class="leaderboard-block" aria-live="polite">
-        <h3>本机排行榜</h3>
-        <ol id="leaderboard" aria-label="本机排行榜"></ol>
+        <div class="leaderboard-heading">
+          <h3 id="leaderboardTitle">本机排行榜</h3>
+          <button id="resultAccount" class="leaderboard-account cloud-only" type="button" aria-haspopup="dialog" hidden>登录上传</button>
+        </div>
+        <p id="leaderboardStatus" class="leaderboard-status" role="status"></p>
+        <ol id="leaderboard" aria-label="排行榜"></ol>
       </div>
       <button id="restart" class="primary" type="button"><span>重新开始</span><img class="control-icon" src="assets/ui-restart.png" alt="" draggable="false"></button>
+    </div>
+  </section>
+
+  <section id="accountDialog" class="account-dialog" role="dialog" aria-modal="true" aria-labelledby="accountTitle" hidden>
+    <div class="account-panel">
+      <button id="accountClose" class="account-close" type="button" aria-label="关闭玩家账号" title="关闭"><span aria-hidden="true">×</span></button>
+      <h2 id="accountTitle">玩家账号</h2>
+
+      <div id="accountSignedOut">
+        <div class="account-modes" role="tablist" aria-label="账号方式">
+          <button id="accountSignInMode" type="button" role="tab" aria-selected="true">登录</button>
+          <button id="accountSignUpMode" type="button" role="tab" aria-selected="false">注册</button>
+        </div>
+        <form id="accountForm">
+          <label id="displayNameField" hidden><span>玩家昵称</span><input id="accountDisplayName" name="displayName" type="text" minlength="2" maxlength="20" autocomplete="nickname"></label>
+          <label><span>邮箱</span><input id="accountEmail" name="email" type="email" autocomplete="email" required></label>
+          <label><span>密码</span><input id="accountPassword" name="password" type="password" minlength="8" autocomplete="current-password" required></label>
+          <button id="accountSubmit" class="primary" type="submit">登录</button>
+        </form>
+      </div>
+
+      <div id="accountSignedIn" class="account-signed-in" hidden>
+        <strong id="accountPlayerName">玩家</strong>
+        <span id="accountPlayerEmail"></span>
+        <p id="accountBest">尚无上传成绩</p>
+        <button id="accountSignOut" class="account-sign-out" type="button">退出登录</button>
+      </div>
+      <p id="accountStatus" class="account-status" role="status" aria-live="polite"></p>
     </div>
   </section>
 
@@ -110,6 +145,7 @@
   </section>
 
   <div id="swipePad" class="swipe-pad" aria-hidden="true"><i></i></div>
-  <script type="module" src="game.js?v=88.3"></script>
+  <script src="cloud-config.js?v=1"></script>
+  <script type="module" src="game.js?v=93.3"></script>
 </body>
 </html>

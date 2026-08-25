@@ -72,7 +72,7 @@ test('intro and result overlays keep keyboard focus in the active flow', () => {
   assert.match(script, /ui\.result\.setAttribute\('aria-hidden', 'false'\)[\s\S]*?ui\.result\.inert = false[\s\S]*?ui\.restart\.focus/);
 });
 
-test('each cleared level pauses on a settlement card and the final screen has a local leaderboard', () => {
+test('each cleared level pauses on a settlement card and the final screen has a persistent leaderboard', () => {
   assert.match(html, /id="levelResult"[^>]*aria-hidden="true"[^>]*inert/);
   assert.match(html, /id="levelResultScore"/);
   assert.match(html, /id="levelResultTiles"/);
@@ -86,10 +86,17 @@ test('each cleared level pauses on a settlement card and the final screen has a 
   assert.match(script, /const playerInDanger = currentState === 'warn' \|\| currentState === 'bursting'/);
   assert.doesNotMatch(script, /const boardBusy = tiles\.some\(\(tile\) => tile\.userData\.state !== 'solid'\)/);
   assert.match(script, /if \(state\.level === LEVELS\.length - 1\) finish\(true\)/);
-  assert.match(script, /function recordLeaderboard\(win\)[\s\S]*?saveLeaderboard\(top\)/);
-  assert.match(script, /renderLeaderboard\(recordLeaderboard\(win\)\)/);
+  assert.match(html, /id="introAccount"[\s\S]*?id="accountDialog"[\s\S]*?id="accountForm"/);
+  assert.match(html, /id="accountEmail"[\s\S]*?id="accountPassword"[\s\S]*?id="accountSignOut"/);
+  assert.match(script, /const PENDING_SCORES_STORAGE_KEY = 'happy-jump-pending-scores-v1'/);
+  assert.match(script, /function recordLocalLeaderboard\(entry\)[\s\S]*?saveLeaderboard\(top\)/);
+  assert.match(script, /function recordLeaderboard\(win\)[\s\S]*?queuePendingScore\(entry\)/);
+  assert.match(script, /async function flushPendingScores\(\)[\s\S]*?cloudLeaderboard\.submitScore/);
+  assert.match(script, /cloudLeaderboard\.restoreSession\(\)/);
+  assert.match(script, /recordLeaderboard\(win\)/);
   assert.match(styles, /\.level-summary \{[\s\S]*?grid-template-columns: repeat\(3, 1fr\)/);
   assert.match(styles, /#leaderboard \{[\s\S]*?list-style: none/);
+  assert.match(styles, /\.account-modes \{[\s\S]*?grid-template-columns: 1fr 1fr/);
 });
 
 

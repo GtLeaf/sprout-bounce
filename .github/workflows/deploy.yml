@@ -27,6 +27,20 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
+      - name: Configure cloud leaderboard
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          node --input-type=module <<'EOF'
+          import { writeFile } from 'node:fs/promises';
+          const config = {
+            supabaseUrl: process.env.SUPABASE_URL || '',
+            supabaseAnonKey: process.env.SUPABASE_ANON_KEY || ''
+          };
+          await writeFile('cloud-config.js', `window.HAPPY_JUMP_CLOUD = Object.freeze(${JSON.stringify(config)});\n`);
+          EOF
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:

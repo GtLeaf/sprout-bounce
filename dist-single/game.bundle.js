@@ -21634,6 +21634,200 @@ void main() {
     return connected;
   }
 
+  // leaderboard-service.mjs?v=1
+  var SESSION_STORAGE_KEY = "happy-jump-cloud-session-v1";
+  function sanitizeDisplayName(value) {
+    return String(value ?? "").replace(/<[^>]*>/g, "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 20);
+  }
+  function normalizeLeaderboardEntry(row) {
+    const profile = Array.isArray(row?.profiles) ? row.profiles[0] : row?.profiles;
+    return {
+      userId: String(row?.user_id ?? ""),
+      displayName: sanitizeDisplayName(profile?.display_name) || "\u795E\u79D8\u73A9\u5BB6",
+      score: Math.max(0, Math.floor(Number(row?.best_score) || 0)),
+      level: Math.max(1, Math.floor(Number(row?.best_level) || 1)),
+      won: Boolean(row?.won),
+      gamesPlayed: Math.max(0, Math.floor(Number(row?.games_played) || 0)),
+      updatedAt: row?.updated_at || null
+    };
+  }
+  function normalizeConfig(config = {}) {
+    return {
+      url: String(config.supabaseUrl || "").replace(/\/+$/, ""),
+      anonKey: String(config.supabaseAnonKey || "").trim()
+    };
+  }
+  function messageFromPayload(payload, fallback) {
+    return payload?.msg || payload?.message || payload?.error_description || payload?.error || fallback;
+  }
+  var CloudLeaderboardService = class {
+    constructor(config, { fetchFn = globalThis.fetch, storage = globalThis.localStorage } = {}) {
+      const normalized = normalizeConfig(config);
+      this.url = normalized.url;
+      this.anonKey = normalized.anonKey;
+      this.fetch = fetchFn;
+      this.storage = storage;
+      this.session = null;
+      this.profile = null;
+      this.listeners = /* @__PURE__ */ new Set();
+    }
+    get enabled() {
+      return Boolean(this.url && this.anonKey && this.fetch);
+    }
+    get user() {
+      return this.session?.user || null;
+    }
+    get displayName() {
+      return sanitizeDisplayName(this.profile?.display_name || this.user?.user_metadata?.display_name) || null;
+    }
+    subscribe(listener) {
+      this.listeners.add(listener);
+      return () => this.listeners.delete(listener);
+    }
+    emit() {
+      const snapshot = { enabled: this.enabled, user: this.user, profile: this.profile, displayName: this.displayName };
+      for (const listener of this.listeners) listener(snapshot);
+    }
+    authHeaders(accessToken = this.session?.access_token) {
+      return {
+        apikey: this.anonKey,
+        Authorization: `Bearer ${accessToken || this.anonKey}`,
+        "Content-Type": "application/json"
+      };
+    }
+    async request(path, { method = "GET", body: body2, accessToken, headers = {} } = {}) {
+      if (!this.enabled) throw new Error("\u4E91\u7AEF\u6392\u884C\u699C\u5C1A\u672A\u914D\u7F6E");
+      const response = await this.fetch(`${this.url}${path}`, {
+        method,
+        headers: { ...this.authHeaders(accessToken), ...headers },
+        body: body2 === void 0 ? void 0 : JSON.stringify(body2)
+      });
+      const contentType = response.headers?.get?.("content-type") || "";
+      const payload = contentType.includes("json") ? await response.json() : await response.text();
+      if (!response.ok) throw new Error(messageFromPayload(payload, `\u8BF7\u6C42\u5931\u8D25 (${response.status})`));
+      return payload;
+    }
+    persistSession(session) {
+      this.session = session?.access_token ? session : null;
+      try {
+        if (this.session) this.storage?.setItem(SESSION_STORAGE_KEY, JSON.stringify(this.session));
+        else this.storage?.removeItem(SESSION_STORAGE_KEY);
+      } catch {
+      }
+    }
+    readStoredSession() {
+      try {
+        const value = JSON.parse(this.storage?.getItem(SESSION_STORAGE_KEY) || "null");
+        return value?.access_token && value?.refresh_token ? value : null;
+      } catch {
+        return null;
+      }
+    }
+    async restoreSession() {
+      if (!this.enabled) {
+        this.emit();
+        return null;
+      }
+      const stored = this.readStoredSession();
+      if (!stored) {
+        this.emit();
+        return null;
+      }
+      this.persistSession(stored);
+      try {
+        const expiresAt = Number(stored.expires_at || 0) * 1e3;
+        if (!expiresAt || expiresAt <= Date.now() + 6e4) await this.refreshSession();
+        else await this.loadProfile();
+        this.emit();
+        return this.session;
+      } catch {
+        this.persistSession(null);
+        this.profile = null;
+        this.emit();
+        return null;
+      }
+    }
+    async refreshSession() {
+      if (!this.session?.refresh_token) throw new Error("\u767B\u5F55\u5DF2\u5931\u6548\uFF0C\u8BF7\u91CD\u65B0\u767B\u5F55");
+      const session = await this.request("/auth/v1/token?grant_type=refresh_token", {
+        method: "POST",
+        accessToken: this.anonKey,
+        body: { refresh_token: this.session.refresh_token }
+      });
+      this.persistSession(session);
+      await this.loadProfile();
+      return session;
+    }
+    async signUp({ email, password, displayName }) {
+      const name = sanitizeDisplayName(displayName);
+      if (name.length < 2) throw new Error("\u6635\u79F0\u81F3\u5C11\u9700\u8981 2 \u4E2A\u5B57\u7B26");
+      const payload = await this.request("/auth/v1/signup", {
+        method: "POST",
+        accessToken: this.anonKey,
+        body: { email: String(email).trim(), password, data: { display_name: name } }
+      });
+      if (payload?.access_token) {
+        this.persistSession(payload);
+        await this.loadProfile();
+        this.emit();
+      }
+      return payload;
+    }
+    async signIn({ email, password }) {
+      const session = await this.request("/auth/v1/token?grant_type=password", {
+        method: "POST",
+        accessToken: this.anonKey,
+        body: { email: String(email).trim(), password }
+      });
+      this.persistSession(session);
+      await this.loadProfile();
+      this.emit();
+      return session;
+    }
+    async signOut() {
+      const accessToken = this.session?.access_token;
+      try {
+        if (accessToken) await this.request("/auth/v1/logout", { method: "POST", accessToken });
+      } catch {
+      } finally {
+        this.persistSession(null);
+        this.profile = null;
+        this.emit();
+      }
+    }
+    async loadProfile() {
+      if (!this.user?.id) return null;
+      const rows = await this.request(`/rest/v1/profiles?select=user_id,display_name&user_id=eq.${encodeURIComponent(this.user.id)}&limit=1`);
+      this.profile = Array.isArray(rows) ? rows[0] || null : null;
+      return this.profile;
+    }
+    async getLeaderboard(limit = 10) {
+      const count = Math.max(1, Math.min(50, Math.floor(limit)));
+      const rows = await this.request(`/rest/v1/leaderboard_entries?select=user_id,best_score,best_level,won,games_played,updated_at,profiles(display_name)&order=best_score.desc,best_level.desc,updated_at.asc&limit=${count}`);
+      return (Array.isArray(rows) ? rows : []).map(normalizeLeaderboardEntry);
+    }
+    async getMyBest() {
+      if (!this.user?.id) return null;
+      const rows = await this.request(`/rest/v1/leaderboard_entries?select=user_id,best_score,best_level,won,games_played,updated_at,profiles(display_name)&user_id=eq.${encodeURIComponent(this.user.id)}&limit=1`);
+      return rows?.[0] ? normalizeLeaderboardEntry(rows[0]) : null;
+    }
+    async submitScore({ score, level, won }) {
+      if (!this.user) throw new Error("\u8BF7\u5148\u767B\u5F55\u518D\u4E0A\u4F20\u6210\u7EE9");
+      const rows = await this.request("/rest/v1/rpc/submit_score", {
+        method: "POST",
+        body: {
+          p_score: Math.max(0, Math.floor(Number(score) || 0)),
+          p_level: Math.max(1, Math.floor(Number(level) || 1)),
+          p_won: Boolean(won)
+        }
+      });
+      return rows?.[0] ? normalizeLeaderboardEntry({ ...rows[0], profiles: { display_name: this.displayName } }) : null;
+    }
+  };
+  function createCloudLeaderboard(config = globalThis.HAPPY_JUMP_CLOUD) {
+    return new CloudLeaderboardService(config);
+  }
+
   // game.js
   var $ = (selector) => document.querySelector(selector);
   var QA_MODE = new URLSearchParams(location.search).has("qa");
@@ -21656,7 +21850,28 @@ void main() {
     levelResultRounds: $("#levelResultRounds"),
     levelResultText: $("#levelResultText"),
     levelContinue: $("#levelContinue"),
-    leaderboard: $("#leaderboard")
+    leaderboard: $("#leaderboard"),
+    leaderboardTitle: $("#leaderboardTitle"),
+    leaderboardStatus: $("#leaderboardStatus"),
+    introAccount: $("#introAccount"),
+    resultAccount: $("#resultAccount"),
+    accountDialog: $("#accountDialog"),
+    accountClose: $("#accountClose"),
+    accountForm: $("#accountForm"),
+    accountSignInMode: $("#accountSignInMode"),
+    accountSignUpMode: $("#accountSignUpMode"),
+    accountSignedOut: $("#accountSignedOut"),
+    accountSignedIn: $("#accountSignedIn"),
+    displayNameField: $("#displayNameField"),
+    accountDisplayName: $("#accountDisplayName"),
+    accountEmail: $("#accountEmail"),
+    accountPassword: $("#accountPassword"),
+    accountSubmit: $("#accountSubmit"),
+    accountPlayerName: $("#accountPlayerName"),
+    accountPlayerEmail: $("#accountPlayerEmail"),
+    accountBest: $("#accountBest"),
+    accountSignOut: $("#accountSignOut"),
+    accountStatus: $("#accountStatus")
   };
   var tutorialUi = {
     root: $("#tutorial"),
@@ -21677,11 +21892,17 @@ void main() {
   ];
   var TUTORIAL_STORAGE_KEY = "happy-jump-mobile-tutorial-v2";
   var LEADERBOARD_STORAGE_KEY = "happy-jump-leaderboard-v1";
+  var PENDING_SCORES_STORAGE_KEY = "happy-jump-pending-scores-v1";
   var TUTORIAL_QUERY = new URLSearchParams(location.search).get("tutorial");
+  var cloudLeaderboard = createCloudLeaderboard();
   var tutorialStep = 0;
   var tutorialPointerStart = null;
   var tutorialLockBeforeShow = false;
   var tutorialPending = true;
+  var accountMode = "sign-in";
+  var lastAccountTrigger = null;
+  var cloudEntries = [];
+  var pendingUploadPromise = null;
   function hasSeenTutorial() {
     try {
       return localStorage.getItem(TUTORIAL_STORAGE_KEY) === "done";
@@ -22598,32 +22819,188 @@ void main() {
     } catch {
     }
   }
-  function renderLeaderboard(entries) {
+  function readPendingScores() {
+    try {
+      const stored = JSON.parse(localStorage.getItem(PENDING_SCORES_STORAGE_KEY) || "[]");
+      return Array.isArray(stored) ? stored.filter((entry) => Number.isFinite(entry?.score) && Number.isFinite(entry?.level)) : [];
+    } catch {
+      return [];
+    }
+  }
+  function savePendingScores(entries) {
+    try {
+      localStorage.setItem(PENDING_SCORES_STORAGE_KEY, JSON.stringify(entries.slice(-20)));
+    } catch {
+    }
+  }
+  function queuePendingScore(entry) {
+    const entries = readPendingScores();
+    entries.push({ ...entry, userId: cloudLeaderboard.user?.id || null });
+    savePendingScores(entries);
+  }
+  function setLeaderboardStatus(text) {
+    if (ui.leaderboardStatus) ui.leaderboardStatus.textContent = text;
+  }
+  function renderLeaderboard(entries, { cloud = false } = {}) {
     if (!ui.leaderboard) return;
-    ui.leaderboard.replaceChildren(...entries.slice(0, 5).map((entry, index) => {
+    const visibleEntries = entries.slice(0, cloud ? 10 : 5);
+    ui.leaderboard.setAttribute("aria-label", cloud ? "\u5168\u7403\u6392\u884C\u699C" : "\u672C\u673A\u6392\u884C\u699C");
+    if (!visibleEntries.length) {
+      const empty = document.createElement("li");
+      empty.className = "empty";
+      const text = document.createElement("strong");
+      text.textContent = "\u8FD8\u6CA1\u6709\u6210\u7EE9";
+      empty.append(text);
+      ui.leaderboard.replaceChildren(empty);
+      return;
+    }
+    ui.leaderboard.replaceChildren(...visibleEntries.map((entry, index) => {
       const item = document.createElement("li");
       const rank = document.createElement("span");
-      const level = document.createElement("strong");
+      const player2 = document.createElement("strong");
       const score = document.createElement("b");
       rank.textContent = `#${index + 1}`;
-      level.textContent = `\u7B2C${entry.level}\u5C42`;
+      player2.textContent = `${entry.displayName || "\u672C\u673A\u73A9\u5BB6"} \xB7 \u7B2C${entry.level}\u5C42`;
       score.textContent = `${Math.max(0, Math.floor(entry.score))} \u5206`;
-      item.append(rank, level, score);
+      if (cloud && entry.userId && entry.userId === cloudLeaderboard.user?.id) item.classList.add("is-player");
+      item.append(rank, player2, score);
       return item;
     }));
   }
-  function recordLeaderboard(win) {
+  function recordLocalLeaderboard(entry) {
     const entries = readLeaderboard();
-    entries.push({
-      score: Math.max(0, Math.floor(state.score)),
-      level: win ? LEVELS.length : state.level + 1,
-      won: Boolean(win),
-      at: Date.now()
-    });
+    entries.push(entry);
     entries.sort((a, b) => b.score - a.score || b.level - a.level || b.at - a.at);
     const top = entries.slice(0, 5);
     saveLeaderboard(top);
     return top;
+  }
+  function scoreFromCurrentGame(win) {
+    return {
+      score: Math.max(0, Math.floor(state.score)),
+      level: win ? LEVELS.length : state.level + 1,
+      won: Boolean(win),
+      at: Date.now()
+    };
+  }
+  async function refreshCloudLeaderboard() {
+    if (!cloudLeaderboard.enabled) return [];
+    cloudEntries = await cloudLeaderboard.getLeaderboard(10);
+    renderLeaderboard(cloudEntries, { cloud: true });
+    return cloudEntries;
+  }
+  async function updateAccountBest() {
+    if (!cloudLeaderboard.user || !ui.accountBest) return;
+    const best = await cloudLeaderboard.getMyBest();
+    ui.accountBest.textContent = best ? `\u6700\u4F73 ${best.score} \u5206 \xB7 \u7B2C ${best.level} \u5C42 \xB7 ${best.gamesPlayed} \u5C40` : "\u5C1A\u65E0\u4E0A\u4F20\u6210\u7EE9";
+  }
+  async function flushPendingScores() {
+    if (!cloudLeaderboard.enabled || !cloudLeaderboard.user) return [];
+    if (pendingUploadPromise) return pendingUploadPromise;
+    pendingUploadPromise = (async () => {
+      const pending = readPendingScores();
+      let nextIndex = pending.findIndex((entry) => !entry.userId || entry.userId === cloudLeaderboard.user.id);
+      while (nextIndex >= 0) {
+        await cloudLeaderboard.submitScore(pending[nextIndex]);
+        pending.splice(nextIndex, 1);
+        savePendingScores(pending);
+        nextIndex = pending.findIndex((entry) => !entry.userId || entry.userId === cloudLeaderboard.user.id);
+      }
+      await Promise.all([refreshCloudLeaderboard(), updateAccountBest()]);
+      setLeaderboardStatus(`\u5DF2\u4F5C\u4E3A ${cloudLeaderboard.displayName} \u540C\u6B65\u81F3\u4E91\u7AEF`);
+      return cloudEntries;
+    })();
+    try {
+      return await pendingUploadPromise;
+    } finally {
+      pendingUploadPromise = null;
+    }
+  }
+  function recordLeaderboard(win) {
+    const entry = scoreFromCurrentGame(win);
+    const localEntries = recordLocalLeaderboard(entry);
+    renderLeaderboard(cloudLeaderboard.enabled && cloudEntries.length ? cloudEntries : localEntries, { cloud: cloudLeaderboard.enabled && cloudEntries.length > 0 });
+    if (!cloudLeaderboard.enabled) return localEntries;
+    queuePendingScore(entry);
+    if (cloudLeaderboard.user) {
+      setLeaderboardStatus("\u6B63\u5728\u4E0A\u4F20\u672C\u5C40\u6210\u7EE9\u2026");
+      void flushPendingScores().catch((error) => setLeaderboardStatus(`\u4E0A\u4F20\u5931\u8D25\uFF1A${friendlyCloudError(error)}`));
+    } else {
+      setLeaderboardStatus("\u767B\u5F55\u540E\u81EA\u52A8\u4E0A\u4F20\u672C\u5C40\u6210\u7EE9");
+    }
+    return localEntries;
+  }
+  function friendlyCloudError(error) {
+    const message = String(error?.message || error || "\u8BF7\u7A0D\u540E\u91CD\u8BD5");
+    if (/Invalid login credentials/i.test(message)) return "\u90AE\u7BB1\u6216\u5BC6\u7801\u9519\u8BEF";
+    if (/Email not confirmed/i.test(message)) return "\u8BF7\u5148\u5728\u90AE\u4EF6\u4E2D\u5B8C\u6210\u9A8C\u8BC1";
+    if (/User already registered/i.test(message)) return "\u8BE5\u90AE\u7BB1\u5DF2\u6CE8\u518C";
+    if (/Password should be at least/i.test(message)) return "\u5BC6\u7801\u81F3\u5C11\u9700\u8981 8 \u4F4D";
+    if (/Failed to fetch|NetworkError/i.test(message)) return "\u7F51\u7EDC\u8FDE\u63A5\u5931\u8D25";
+    return message;
+  }
+  function setAccountStatus(text, isError = false) {
+    if (!ui.accountStatus) return;
+    ui.accountStatus.textContent = text;
+    ui.accountStatus.classList.toggle("is-error", isError);
+  }
+  function setAccountMode(mode) {
+    accountMode = mode === "sign-up" ? "sign-up" : "sign-in";
+    const signingUp = accountMode === "sign-up";
+    ui.accountSignInMode?.setAttribute("aria-selected", String(!signingUp));
+    ui.accountSignUpMode?.setAttribute("aria-selected", String(signingUp));
+    if (ui.displayNameField) ui.displayNameField.hidden = !signingUp;
+    if (ui.accountDisplayName) ui.accountDisplayName.required = signingUp;
+    if (ui.accountPassword) ui.accountPassword.autocomplete = signingUp ? "new-password" : "current-password";
+    if (ui.accountSubmit) ui.accountSubmit.textContent = signingUp ? "\u6CE8\u518C" : "\u767B\u5F55";
+    setAccountStatus("");
+  }
+  function updateAccountUi() {
+    const enabled = cloudLeaderboard.enabled;
+    document.querySelectorAll(".cloud-only").forEach((element) => {
+      element.hidden = !enabled;
+    });
+    if (ui.leaderboardTitle) ui.leaderboardTitle.textContent = enabled ? "\u5168\u7403\u6392\u884C\u699C" : "\u672C\u673A\u6392\u884C\u699C";
+    if (!enabled) return;
+    const signedIn = Boolean(cloudLeaderboard.user);
+    const name = cloudLeaderboard.displayName || "\u73A9\u5BB6";
+    if (ui.introAccount) ui.introAccount.textContent = signedIn ? name : "\u767B\u5F55\u6392\u884C\u699C";
+    if (ui.resultAccount) ui.resultAccount.textContent = signedIn ? name : "\u767B\u5F55\u4E0A\u4F20";
+    if (ui.accountSignedOut) ui.accountSignedOut.hidden = signedIn;
+    if (ui.accountSignedIn) ui.accountSignedIn.hidden = !signedIn;
+    if (ui.accountPlayerName) ui.accountPlayerName.textContent = name;
+    if (ui.accountPlayerEmail) ui.accountPlayerEmail.textContent = cloudLeaderboard.user?.email || "";
+  }
+  function openAccountDialog(event) {
+    if (!cloudLeaderboard.enabled || !ui.accountDialog) return;
+    lastAccountTrigger = event?.currentTarget || document.activeElement;
+    updateAccountUi();
+    setAccountStatus("");
+    ui.accountDialog.hidden = false;
+    (cloudLeaderboard.user ? ui.accountSignOut : ui.accountEmail)?.focus({ preventScroll: true });
+    if (cloudLeaderboard.user) void updateAccountBest().catch(() => {
+    });
+  }
+  function closeAccountDialog() {
+    if (!ui.accountDialog || ui.accountDialog.hidden) return;
+    ui.accountDialog.hidden = true;
+    lastAccountTrigger?.focus?.({ preventScroll: true });
+  }
+  async function initializeCloudLeaderboard() {
+    renderLeaderboard(readLeaderboard());
+    updateAccountUi();
+    if (!cloudLeaderboard.enabled) return;
+    setLeaderboardStatus("\u6B63\u5728\u8FDE\u63A5\u5168\u7403\u6392\u884C\u699C\u2026");
+    try {
+      await cloudLeaderboard.restoreSession();
+      updateAccountUi();
+      if (cloudLeaderboard.user && readPendingScores().length) await flushPendingScores();
+      else await refreshCloudLeaderboard();
+      setLeaderboardStatus(cloudLeaderboard.user ? `\u5DF2\u767B\u5F55\uFF1A${cloudLeaderboard.displayName}` : "\u767B\u5F55\u540E\u4E0A\u4F20\u4F60\u7684\u6700\u4F73\u6210\u7EE9");
+    } catch (error) {
+      renderLeaderboard(readLeaderboard());
+      setLeaderboardStatus(`\u4E91\u7AEF\u6682\u4E0D\u53EF\u7528\uFF1A${friendlyCloudError(error)}`);
+    }
   }
   function showLevelResult() {
     if (!ui.levelResult || state.over) return;
@@ -22938,7 +23315,7 @@ void main() {
     stopMixCues();
     stopMusic();
     $("#finalScore").textContent = state.score;
-    renderLeaderboard(recordLeaderboard(win));
+    recordLeaderboard(win);
     $("#resultTag").textContent = win ? "\u5168\u90E8\u901A\u5173" : "\u6311\u6218\u7ED3\u675F";
     $("#resultTitle").textContent = win ? "\u65B9\u9635\u5927\u5E08" : reason;
     $("#resultText").textContent = win ? `${LEVELS.length} \u5C42\u65B9\u5757\u98CE\u66B4\u5168\u90E8\u5B8C\u6210\u3002` : "\u770B\u51C6\u8B66\u544A\uFF0C\u5728\u7206\u70B8\u524D\u8DF3\u5230\u5B89\u5168\u65B9\u5757\u3002";
@@ -23721,6 +24098,58 @@ void main() {
     renderer.render(scene, camera);
   }
   loop();
+  ui.introAccount?.addEventListener("click", openAccountDialog);
+  ui.resultAccount?.addEventListener("click", openAccountDialog);
+  ui.accountClose?.addEventListener("click", closeAccountDialog);
+  ui.accountSignInMode?.addEventListener("click", () => setAccountMode("sign-in"));
+  ui.accountSignUpMode?.addEventListener("click", () => setAccountMode("sign-up"));
+  ui.accountDialog?.addEventListener("click", (event) => {
+    if (event.target === ui.accountDialog) closeAccountDialog();
+  });
+  ui.accountForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    ui.accountSubmit.disabled = true;
+    setAccountStatus(accountMode === "sign-up" ? "\u6B63\u5728\u521B\u5EFA\u8D26\u53F7\u2026" : "\u6B63\u5728\u767B\u5F55\u2026");
+    try {
+      if (accountMode === "sign-up") {
+        const result = await cloudLeaderboard.signUp({
+          email: ui.accountEmail.value,
+          password: ui.accountPassword.value,
+          displayName: ui.accountDisplayName.value
+        });
+        if (!result?.access_token) {
+          setAccountMode("sign-in");
+          setAccountStatus("\u6CE8\u518C\u6210\u529F\uFF0C\u8BF7\u67E5\u6536\u9A8C\u8BC1\u90AE\u4EF6\u540E\u767B\u5F55");
+          return;
+        }
+      } else {
+        await cloudLeaderboard.signIn({ email: ui.accountEmail.value, password: ui.accountPassword.value });
+      }
+      updateAccountUi();
+      setAccountStatus(`\u5DF2\u767B\u5F55\uFF1A${cloudLeaderboard.displayName}`);
+      await flushPendingScores();
+      await updateAccountBest();
+    } catch (error) {
+      setAccountStatus(friendlyCloudError(error), true);
+    } finally {
+      ui.accountSubmit.disabled = false;
+    }
+  });
+  ui.accountSignOut?.addEventListener("click", async () => {
+    setAccountStatus("\u6B63\u5728\u9000\u51FA\u2026");
+    try {
+      await cloudLeaderboard.signOut();
+      updateAccountUi();
+      await refreshCloudLeaderboard();
+      setLeaderboardStatus("\u767B\u5F55\u540E\u4E0A\u4F20\u4F60\u7684\u6700\u4F73\u6210\u7EE9");
+      setAccountStatus("");
+    } catch (error) {
+      setAccountStatus(friendlyCloudError(error), true);
+    }
+  });
+  addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && ui.accountDialog && !ui.accountDialog.hidden) closeAccountDialog();
+  });
   $("#start").addEventListener("click", reset);
   $("#restart").addEventListener("click", reset);
   $("#levelContinue").addEventListener("click", continueFromLevelResult);
@@ -23801,6 +24230,8 @@ void main() {
   };
   startLevel(0, { silent: true });
   syncAudioState();
+  setAccountMode("sign-in");
+  void initializeCloudLeaderboard();
 })();
 /**
  * @license

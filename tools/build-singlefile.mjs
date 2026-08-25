@@ -39,6 +39,7 @@ function inlineAssets(source) {
 let html = await readFile(resolve(root, 'index.html'), 'utf8');
 let css = await readFile(resolve(root, 'style.css'), 'utf8');
 let script = await readFile(bundlePath, 'utf8');
+const cloudConfig = await readFile(resolve(root, 'cloud-config.js'), 'utf8');
 
 html = html.replace(/\s*<meta property="og:image"[^>]*>/, '');
 html = html.replace(/\s*<script type="importmap">[\s\S]*?<\/script>/, '');
@@ -49,6 +50,7 @@ css = inlineAssets(css);
 script = inlineAssets(script).replaceAll('</script', '<\\/script');
 html = inlineAssets(html)
   .replace(/\s*<link rel="stylesheet" href="style\.css\?v=[^"]+">/, `\n  <style>${css}</style>`)
+  .replace(/\s*<script src="cloud-config\.js\?v=[^"]+"><\/script>/, `\n  <script>${cloudConfig}</script>`)
   .replace(/\s*<script type="module" src="game\.js\?v=[^"]+"><\/script>/, `\n  <script>${script}</script>`);
 
 await mkdir(dirname(outputPath), { recursive: true });

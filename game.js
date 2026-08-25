@@ -2,6 +2,7 @@ import * as THREE from './vendor/three/three.module.js';
 import { RoundedBoxGeometry } from './vendor/three/addons/geometries/RoundedBoxGeometry.js';
 import { EXPLOSION_TIMING, LEVELS, REWARD_TILE_THRESHOLDS, TILES_PER_ROUND, TILE_COLORS, rewardRankForTileCount, roundsForTileCount } from './game-config.mjs?v=88';
 import { isChallengingStartBoard, orthogonalComponent } from './game-rules.mjs?v=88';
+import { createCloudLeaderboard } from './leaderboard-service.mjs?v=1';
 
 const $ = (selector) => document.querySelector(selector);
 const QA_MODE = new URLSearchParams(location.search).has('qa');
@@ -13,7 +14,15 @@ const ui = {
   levelResultKicker: $('#levelResultKicker'), levelResultTitle: $('#levelResultTitle'),
   levelResultScore: $('#levelResultScore'), levelResultTiles: $('#levelResultTiles'),
   levelResultRounds: $('#levelResultRounds'), levelResultText: $('#levelResultText'),
-  levelContinue: $('#levelContinue'), leaderboard: $('#leaderboard')
+  levelContinue: $('#levelContinue'), leaderboard: $('#leaderboard'), leaderboardTitle: $('#leaderboardTitle'),
+  leaderboardStatus: $('#leaderboardStatus'), introAccount: $('#introAccount'), resultAccount: $('#resultAccount'),
+  accountDialog: $('#accountDialog'), accountClose: $('#accountClose'), accountForm: $('#accountForm'),
+  accountSignInMode: $('#accountSignInMode'), accountSignUpMode: $('#accountSignUpMode'),
+  accountSignedOut: $('#accountSignedOut'), accountSignedIn: $('#accountSignedIn'),
+  displayNameField: $('#displayNameField'), accountDisplayName: $('#accountDisplayName'),
+  accountEmail: $('#accountEmail'), accountPassword: $('#accountPassword'), accountSubmit: $('#accountSubmit'),
+  accountPlayerName: $('#accountPlayerName'), accountPlayerEmail: $('#accountPlayerEmail'),
+  accountBest: $('#accountBest'), accountSignOut: $('#accountSignOut'), accountStatus: $('#accountStatus')
 };
 
 const tutorialUi = {
@@ -30,11 +39,17 @@ const TUTORIAL_STEPS = [
 ];
 const TUTORIAL_STORAGE_KEY = 'happy-jump-mobile-tutorial-v2';
 const LEADERBOARD_STORAGE_KEY = 'happy-jump-leaderboard-v1';
+const PENDING_SCORES_STORAGE_KEY = 'happy-jump-pending-scores-v1';
 const TUTORIAL_QUERY = new URLSearchParams(location.search).get('tutorial');
+const cloudLeaderboard = createCloudLeaderboard();
 let tutorialStep = 0;
 let tutorialPointerStart = null;
 let tutorialLockBeforeShow = false;
 let tutorialPending = true;
+let accountMode = 'sign-in';
+let lastAccountTrigger = null;
+let cloudEntries = [];
+let pendingUploadPromise = null;
 
 function hasSeenTutorial() {
   try { return localStorage.getItem(TUTORIAL_STORAGE_KEY) === 'done'; }
@@ -998,33 +1013,200 @@ function saveLeaderboard(entries) {
   catch { /* Storage can be unavailable in private browsing. */ }
 }
 
-function renderLeaderboard(entries) {
+function readPendingScores() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(PENDING_SCORES_STORAGE_KEY) || '[]');
+    return Array.isArray(stored) ? stored.filter((entry) => Number.isFinite(entry?.score) && Number.isFinite(entry?.level)) : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePendingScores(entries) {
+  try { localStorage.setItem(PENDING_SCORES_STORAGE_KEY, JSON.stringify(entries.slice(-20))); }
+  catch { /* Storage can be unavailable in private browsing. */ }
+}
+
+function queuePendingScore(entry) {
+  const entries = readPendingScores();
+  entries.push({ ...entry, userId: cloudLeaderboard.user?.id || null });
+  savePendingScores(entries);
+}
+
+function setLeaderboardStatus(text) {
+  if (ui.leaderboardStatus) ui.leaderboardStatus.textContent = text;
+}
+
+function renderLeaderboard(entries, { cloud = false } = {}) {
   if (!ui.leaderboard) return;
-  ui.leaderboard.replaceChildren(...entries.slice(0, 5).map((entry, index) => {
+  const visibleEntries = entries.slice(0, cloud ? 10 : 5);
+  ui.leaderboard.setAttribute('aria-label', cloud ? '全球排行榜' : '本机排行榜');
+  if (!visibleEntries.length) {
+    const empty = document.createElement('li');
+    empty.className = 'empty';
+    const text = document.createElement('strong');
+    text.textContent = '还没有成绩';
+    empty.append(text);
+    ui.leaderboard.replaceChildren(empty);
+    return;
+  }
+  ui.leaderboard.replaceChildren(...visibleEntries.map((entry, index) => {
     const item = document.createElement('li');
     const rank = document.createElement('span');
-    const level = document.createElement('strong');
+    const player = document.createElement('strong');
     const score = document.createElement('b');
     rank.textContent = `#${index + 1}`;
-    level.textContent = `第${entry.level}层`;
+    player.textContent = `${entry.displayName || '本机玩家'} · 第${entry.level}层`;
     score.textContent = `${Math.max(0, Math.floor(entry.score))} 分`;
-    item.append(rank, level, score);
+    if (cloud && entry.userId && entry.userId === cloudLeaderboard.user?.id) item.classList.add('is-player');
+    item.append(rank, player, score);
     return item;
   }));
 }
 
-function recordLeaderboard(win) {
+function recordLocalLeaderboard(entry) {
   const entries = readLeaderboard();
-  entries.push({
-    score: Math.max(0, Math.floor(state.score)),
-    level: win ? LEVELS.length : state.level + 1,
-    won: Boolean(win),
-    at: Date.now()
-  });
+  entries.push(entry);
   entries.sort((a, b) => b.score - a.score || b.level - a.level || b.at - a.at);
   const top = entries.slice(0, 5);
   saveLeaderboard(top);
   return top;
+}
+
+function scoreFromCurrentGame(win) {
+  return {
+    score: Math.max(0, Math.floor(state.score)),
+    level: win ? LEVELS.length : state.level + 1,
+    won: Boolean(win),
+    at: Date.now()
+  };
+}
+
+async function refreshCloudLeaderboard() {
+  if (!cloudLeaderboard.enabled) return [];
+  cloudEntries = await cloudLeaderboard.getLeaderboard(10);
+  renderLeaderboard(cloudEntries, { cloud: true });
+  return cloudEntries;
+}
+
+async function updateAccountBest() {
+  if (!cloudLeaderboard.user || !ui.accountBest) return;
+  const best = await cloudLeaderboard.getMyBest();
+  ui.accountBest.textContent = best ? `最佳 ${best.score} 分 · 第 ${best.level} 层 · ${best.gamesPlayed} 局` : '尚无上传成绩';
+}
+
+async function flushPendingScores() {
+  if (!cloudLeaderboard.enabled || !cloudLeaderboard.user) return [];
+  if (pendingUploadPromise) return pendingUploadPromise;
+  pendingUploadPromise = (async () => {
+    const pending = readPendingScores();
+    let nextIndex = pending.findIndex((entry) => !entry.userId || entry.userId === cloudLeaderboard.user.id);
+    while (nextIndex >= 0) {
+      await cloudLeaderboard.submitScore(pending[nextIndex]);
+      pending.splice(nextIndex, 1);
+      savePendingScores(pending);
+      nextIndex = pending.findIndex((entry) => !entry.userId || entry.userId === cloudLeaderboard.user.id);
+    }
+    await Promise.all([refreshCloudLeaderboard(), updateAccountBest()]);
+    setLeaderboardStatus(`已作为 ${cloudLeaderboard.displayName} 同步至云端`);
+    return cloudEntries;
+  })();
+  try {
+    return await pendingUploadPromise;
+  } finally {
+    pendingUploadPromise = null;
+  }
+}
+
+function recordLeaderboard(win) {
+  const entry = scoreFromCurrentGame(win);
+  const localEntries = recordLocalLeaderboard(entry);
+  renderLeaderboard(cloudLeaderboard.enabled && cloudEntries.length ? cloudEntries : localEntries, { cloud: cloudLeaderboard.enabled && cloudEntries.length > 0 });
+  if (!cloudLeaderboard.enabled) return localEntries;
+  queuePendingScore(entry);
+  if (cloudLeaderboard.user) {
+    setLeaderboardStatus('正在上传本局成绩…');
+    void flushPendingScores().catch((error) => setLeaderboardStatus(`上传失败：${friendlyCloudError(error)}`));
+  } else {
+    setLeaderboardStatus('登录后自动上传本局成绩');
+  }
+  return localEntries;
+}
+
+function friendlyCloudError(error) {
+  const message = String(error?.message || error || '请稍后重试');
+  if (/Invalid login credentials/i.test(message)) return '邮箱或密码错误';
+  if (/Email not confirmed/i.test(message)) return '请先在邮件中完成验证';
+  if (/User already registered/i.test(message)) return '该邮箱已注册';
+  if (/Password should be at least/i.test(message)) return '密码至少需要 8 位';
+  if (/Failed to fetch|NetworkError/i.test(message)) return '网络连接失败';
+  return message;
+}
+
+function setAccountStatus(text, isError = false) {
+  if (!ui.accountStatus) return;
+  ui.accountStatus.textContent = text;
+  ui.accountStatus.classList.toggle('is-error', isError);
+}
+
+function setAccountMode(mode) {
+  accountMode = mode === 'sign-up' ? 'sign-up' : 'sign-in';
+  const signingUp = accountMode === 'sign-up';
+  ui.accountSignInMode?.setAttribute('aria-selected', String(!signingUp));
+  ui.accountSignUpMode?.setAttribute('aria-selected', String(signingUp));
+  if (ui.displayNameField) ui.displayNameField.hidden = !signingUp;
+  if (ui.accountDisplayName) ui.accountDisplayName.required = signingUp;
+  if (ui.accountPassword) ui.accountPassword.autocomplete = signingUp ? 'new-password' : 'current-password';
+  if (ui.accountSubmit) ui.accountSubmit.textContent = signingUp ? '注册' : '登录';
+  setAccountStatus('');
+}
+
+function updateAccountUi() {
+  const enabled = cloudLeaderboard.enabled;
+  document.querySelectorAll('.cloud-only').forEach((element) => { element.hidden = !enabled; });
+  if (ui.leaderboardTitle) ui.leaderboardTitle.textContent = enabled ? '全球排行榜' : '本机排行榜';
+  if (!enabled) return;
+  const signedIn = Boolean(cloudLeaderboard.user);
+  const name = cloudLeaderboard.displayName || '玩家';
+  if (ui.introAccount) ui.introAccount.textContent = signedIn ? name : '登录排行榜';
+  if (ui.resultAccount) ui.resultAccount.textContent = signedIn ? name : '登录上传';
+  if (ui.accountSignedOut) ui.accountSignedOut.hidden = signedIn;
+  if (ui.accountSignedIn) ui.accountSignedIn.hidden = !signedIn;
+  if (ui.accountPlayerName) ui.accountPlayerName.textContent = name;
+  if (ui.accountPlayerEmail) ui.accountPlayerEmail.textContent = cloudLeaderboard.user?.email || '';
+}
+
+function openAccountDialog(event) {
+  if (!cloudLeaderboard.enabled || !ui.accountDialog) return;
+  lastAccountTrigger = event?.currentTarget || document.activeElement;
+  updateAccountUi();
+  setAccountStatus('');
+  ui.accountDialog.hidden = false;
+  (cloudLeaderboard.user ? ui.accountSignOut : ui.accountEmail)?.focus({ preventScroll: true });
+  if (cloudLeaderboard.user) void updateAccountBest().catch(() => {});
+}
+
+function closeAccountDialog() {
+  if (!ui.accountDialog || ui.accountDialog.hidden) return;
+  ui.accountDialog.hidden = true;
+  lastAccountTrigger?.focus?.({ preventScroll: true });
+}
+
+async function initializeCloudLeaderboard() {
+  renderLeaderboard(readLeaderboard());
+  updateAccountUi();
+  if (!cloudLeaderboard.enabled) return;
+  setLeaderboardStatus('正在连接全球排行榜…');
+  try {
+    await cloudLeaderboard.restoreSession();
+    updateAccountUi();
+    if (cloudLeaderboard.user && readPendingScores().length) await flushPendingScores();
+    else await refreshCloudLeaderboard();
+    setLeaderboardStatus(cloudLeaderboard.user ? `已登录：${cloudLeaderboard.displayName}` : '登录后上传你的最佳成绩');
+  } catch (error) {
+    renderLeaderboard(readLeaderboard());
+    setLeaderboardStatus(`云端暂不可用：${friendlyCloudError(error)}`);
+  }
 }
 
 function showLevelResult() {
@@ -1358,7 +1540,7 @@ function finish(win, reason = '', outcome = 'gameOver') {
   stopMixCues();
   stopMusic();
   $('#finalScore').textContent = state.score;
-  renderLeaderboard(recordLeaderboard(win));
+  recordLeaderboard(win);
   $('#resultTag').textContent = win ? '全部通关' : '挑战结束';
   $('#resultTitle').textContent = win ? '方阵大师' : reason;
   $('#resultText').textContent = win ? `${LEVELS.length} 层方块风暴全部完成。` : '看准警告，在爆炸前跳到安全方块。';
@@ -2201,6 +2383,59 @@ function loop() {
 }
 loop();
 
+ui.introAccount?.addEventListener('click', openAccountDialog);
+ui.resultAccount?.addEventListener('click', openAccountDialog);
+ui.accountClose?.addEventListener('click', closeAccountDialog);
+ui.accountSignInMode?.addEventListener('click', () => setAccountMode('sign-in'));
+ui.accountSignUpMode?.addEventListener('click', () => setAccountMode('sign-up'));
+ui.accountDialog?.addEventListener('click', (event) => {
+  if (event.target === ui.accountDialog) closeAccountDialog();
+});
+ui.accountForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  ui.accountSubmit.disabled = true;
+  setAccountStatus(accountMode === 'sign-up' ? '正在创建账号…' : '正在登录…');
+  try {
+    if (accountMode === 'sign-up') {
+      const result = await cloudLeaderboard.signUp({
+        email: ui.accountEmail.value,
+        password: ui.accountPassword.value,
+        displayName: ui.accountDisplayName.value
+      });
+      if (!result?.access_token) {
+        setAccountMode('sign-in');
+        setAccountStatus('注册成功，请查收验证邮件后登录');
+        return;
+      }
+    } else {
+      await cloudLeaderboard.signIn({ email: ui.accountEmail.value, password: ui.accountPassword.value });
+    }
+    updateAccountUi();
+    setAccountStatus(`已登录：${cloudLeaderboard.displayName}`);
+    await flushPendingScores();
+    await updateAccountBest();
+  } catch (error) {
+    setAccountStatus(friendlyCloudError(error), true);
+  } finally {
+    ui.accountSubmit.disabled = false;
+  }
+});
+ui.accountSignOut?.addEventListener('click', async () => {
+  setAccountStatus('正在退出…');
+  try {
+    await cloudLeaderboard.signOut();
+    updateAccountUi();
+    await refreshCloudLeaderboard();
+    setLeaderboardStatus('登录后上传你的最佳成绩');
+    setAccountStatus('');
+  } catch (error) {
+    setAccountStatus(friendlyCloudError(error), true);
+  }
+});
+addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && ui.accountDialog && !ui.accountDialog.hidden) closeAccountDialog();
+});
+
 $('#start').addEventListener('click', reset);
 $('#restart').addEventListener('click', reset);
 $('#levelContinue').addEventListener('click', continueFromLevelResult);
@@ -2284,3 +2519,5 @@ window.__bounceGrid = {
 // during the first paint. This only prepares visuals; reset() starts the timer.
 startLevel(0, { silent: true });
 syncAudioState();
+setAccountMode('sign-in');
+void initializeCloudLeaderboard();
