@@ -14,6 +14,7 @@ const windowInfo = wxApi.getWindowInfo?.() || wxApi.getSystemInfoSync?.() || {};
 const isDevtools = deviceInfo.platform === 'devtools' || deviceInfo.brand === 'devtools';
 const DEVTOOLS_STATE_KEY = 'happy-jump-devtools-state-v1';
 const DEVTOOLS_TOUCH_KEY = 'happy-jump-devtools-touch-v1';
+const DEVTOOLS_LIFECYCLE_KEY = 'happy-jump-devtools-lifecycle-v1';
 const uiCanvas = wxApi.createCanvas();
 uiCanvas.width = Math.max(1, Math.floor(width * ratio));
 uiCanvas.height = Math.max(1, Math.floor(height * ratio));
@@ -26,7 +27,7 @@ const THEME = Object.freeze({
   aqua: '#53a895', aquaDark: '#397f70', warm: '#e4ce8b', alert: '#c97762'
 });
 const LOCAL_BEST_KEY = 'happy-jump-wechat-local-best-v2';
-const BUILD_LABEL = '体验版 0.3.6';
+const BUILD_LABEL = '体验版 0.3.7';
 const art = {};
 const buttons = {};
 const leaderboardState = {
@@ -50,7 +51,9 @@ let userInfoButton = null;
 let touchDebug = null;
 let recentTouch = null;
 let lastTouchTestId = null;
+let lastLifecycleTestId = null;
 let touchReceipt = null;
+let lifecycleDebug = { phase: 'launch', at: Date.now() };
 
 function loadArt(name, source) {
   const image = wxApi.createImage();
@@ -424,6 +427,8 @@ function writeDevtoolsState(state) {
         return result;
       }, {}),
       touchDebug,
+      touchActive: Boolean(touch),
+      lifecycleDebug,
       overlayReady: Boolean(overlay && texture),
       updatedAt: Date.now()
     });
@@ -683,20 +688,37 @@ function runDevtoolsTouchTest() {
   onTouchEnd({ touches: [], changedTouches: [request.touch] });
 }
 
-wxApi.onHide(() => {
-  document.hidden = true;
+function applyVisibility(hidden) {
+  if (hidden) {
+    onTouchCancel();
+    recentTouch = null;
+    touchReceipt = null;
+    hideProfileButton();
+  }
+  document.hidden = hidden;
   globalThis.__happyJumpPlatform.dispatchEvent({ type: 'visibilitychange' });
-});
-wxApi.onShow(() => {
-  document.hidden = false;
-  globalThis.__happyJumpPlatform.dispatchEvent({ type: 'visibilitychange' });
-});
+  lifecycleDebug = { phase: hidden ? 'hide' : 'show', at: Date.now() };
+  lastSignature = '';
+}
+
+function runDevtoolsLifecycleTest() {
+  if (!isDevtools) return;
+  const request = wxApi.getStorageSync(DEVTOOLS_LIFECYCLE_KEY);
+  if (!request?.id || request.id === lastLifecycleTestId || !['hide', 'show'].includes(request.phase)) return;
+  lastLifecycleTestId = request.id;
+  wxApi.removeStorageSync?.(DEVTOOLS_LIFECYCLE_KEY);
+  applyVisibility(request.phase === 'hide');
+}
+
+wxApi.onHide(() => applyVisibility(true));
+wxApi.onShow(() => applyVisibility(false));
 
 function renderWechatOverlay({ renderer, state, levels }) {
   latestState = state;
   latestLevels = levels;
   ensureOverlay();
   runDevtoolsTouchTest();
+  runDevtoolsLifecycleTest();
   if (state.over && !previousOver) saveResult(state);
   previousOver = state.over;
 

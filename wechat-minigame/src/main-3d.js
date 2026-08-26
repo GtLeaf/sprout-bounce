@@ -25040,6 +25040,7 @@ var windowInfo = ((_a14 = wxApi2.getWindowInfo) == null ? void 0 : _a14.call(wxA
 var isDevtools = deviceInfo.platform === "devtools" || deviceInfo.brand === "devtools";
 var DEVTOOLS_STATE_KEY = "happy-jump-devtools-state-v1";
 var DEVTOOLS_TOUCH_KEY = "happy-jump-devtools-touch-v1";
+var DEVTOOLS_LIFECYCLE_KEY = "happy-jump-devtools-lifecycle-v1";
 var uiCanvas = wxApi2.createCanvas();
 uiCanvas.width = Math.max(1, Math.floor(width * ratio));
 uiCanvas.height = Math.max(1, Math.floor(height * ratio));
@@ -25056,7 +25057,7 @@ var THEME = Object.freeze({
   alert: "#c97762"
 });
 var LOCAL_BEST_KEY = "happy-jump-wechat-local-best-v2";
-var BUILD_LABEL = "\u4F53\u9A8C\u7248 0.3.6";
+var BUILD_LABEL = "\u4F53\u9A8C\u7248 0.3.7";
 var art = {};
 var buttons = {};
 var leaderboardState = {
@@ -25079,7 +25080,9 @@ var userInfoButton = null;
 var touchDebug = null;
 var recentTouch = null;
 var lastTouchTestId = null;
+var lastLifecycleTestId = null;
 var touchReceipt = null;
+var lifecycleDebug = { phase: "launch", at: Date.now() };
 function loadArt(name, source) {
   const image = wxApi2.createImage();
   image.onload = () => {
@@ -25430,6 +25433,8 @@ function writeDevtoolsState(state2) {
         return result;
       }, {}),
       touchDebug,
+      touchActive: Boolean(touch),
+      lifecycleDebug,
       overlayReady: Boolean(overlay && texture),
       updatedAt: Date.now()
     });
@@ -25691,19 +25696,35 @@ function runDevtoolsTouchTest() {
   onTouchStart(event);
   onTouchEnd({ touches: [], changedTouches: [request.touch] });
 }
-wxApi2.onHide(() => {
-  document3.hidden = true;
+function applyVisibility(hidden) {
+  if (hidden) {
+    onTouchCancel();
+    recentTouch = null;
+    touchReceipt = null;
+    hideProfileButton();
+  }
+  document3.hidden = hidden;
   globalThis.__happyJumpPlatform.dispatchEvent({ type: "visibilitychange" });
-});
-wxApi2.onShow(() => {
-  document3.hidden = false;
-  globalThis.__happyJumpPlatform.dispatchEvent({ type: "visibilitychange" });
-});
+  lifecycleDebug = { phase: hidden ? "hide" : "show", at: Date.now() };
+  lastSignature = "";
+}
+function runDevtoolsLifecycleTest() {
+  var _a23;
+  if (!isDevtools) return;
+  const request = wxApi2.getStorageSync(DEVTOOLS_LIFECYCLE_KEY);
+  if (!(request == null ? void 0 : request.id) || request.id === lastLifecycleTestId || !["hide", "show"].includes(request.phase)) return;
+  lastLifecycleTestId = request.id;
+  (_a23 = wxApi2.removeStorageSync) == null ? void 0 : _a23.call(wxApi2, DEVTOOLS_LIFECYCLE_KEY);
+  applyVisibility(request.phase === "hide");
+}
+wxApi2.onHide(() => applyVisibility(true));
+wxApi2.onShow(() => applyVisibility(false));
 function renderWechatOverlay({ renderer: renderer2, state: state2, levels }) {
   latestState = state2;
   latestLevels = levels;
   ensureOverlay();
   runDevtoolsTouchTest();
+  runDevtoolsLifecycleTest();
   if (state2.over && !previousOver) saveResult(state2);
   previousOver = state2.over;
   const toast = document3.querySelector("#toast");

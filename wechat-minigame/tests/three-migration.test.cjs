@@ -37,6 +37,10 @@ test('the platform layer supplies WeChat canvas, storage, touch and lifecycle se
   assert.match(ui, /new WechatLeaderboard\(wxApi, config\)/);
   assert.match(ui, /wxApi\.onTouchStart/);
   assert.match(ui, /wxApi\.onHide/);
+  assert.match(ui, /function applyVisibility\(hidden\)/);
+  assert.match(ui, /if \(hidden\) \{\s*onTouchCancel\(\);\s*recentTouch = null;\s*touchReceipt = null;\s*hideProfileButton\(\)/);
+  assert.match(ui, /wxApi\.onHide\(\(\) => applyVisibility\(true\)\)/);
+  assert.match(ui, /wxApi\.onShow\(\(\) => applyVisibility\(false\)\)/);
   assert.match(ui, /__happyJumpAfterRender/);
   assert.doesNotMatch(ui, /setTimeout\(\(\) => clickDummy\('start'\)/);
 });
@@ -107,7 +111,7 @@ test('physical-device input bypasses synthetic browser events for controls and s
 
 test('the home screen identifies the current physical-device preview build', async () => {
   const ui = await source('wechat-minigame/src/wechat-ui.mjs');
-  assert.match(ui, /BUILD_LABEL = '体验版 0\.3\.6'/);
+  assert.match(ui, /BUILD_LABEL = '体验版 0\.3\.7'/);
   assert.match(ui, /text\(BUILD_LABEL/);
 });
 
@@ -162,8 +166,12 @@ test('developer-tool diagnostics expose runtime state without running on phones'
   assert.match(ui, /isDevtools/);
   assert.match(ui, /happy-jump-devtools-state-v1/);
   assert.match(ui, /happy-jump-devtools-touch-v1/);
+  assert.match(ui, /happy-jump-devtools-lifecycle-v1/);
   assert.match(ui, /runDevtoolsTouchTest\(\)/);
+  assert.match(ui, /runDevtoolsLifecycleTest\(\)/);
   assert.match(ui, /if \(!isDevtools\) return/);
+  assert.match(ui, /lifecycleDebug/);
+  assert.match(ui, /touchActive: Boolean\(touch\)/);
 });
 
 test('a test AppID saves results locally without calling an unavailable cloud API', async () => {
