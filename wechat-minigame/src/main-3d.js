@@ -22532,12 +22532,13 @@ function setTutorialStep(nextStep) {
   tutorialStep = Math.max(0, Math.min(2, nextStep));
   renderTutorialStep();
 }
-tutorialUi.close.addEventListener("click", dismissTutorial);
-tutorialUi.previous.addEventListener("click", () => setTutorialStep(tutorialStep - 1));
-tutorialUi.next.addEventListener("click", () => {
+function advanceTutorial() {
   if (tutorialStep === TUTORIAL_STEPS.length - 1) dismissTutorial();
   else setTutorialStep(tutorialStep + 1);
-});
+}
+tutorialUi.close.addEventListener("click", dismissTutorial);
+tutorialUi.previous.addEventListener("click", () => setTutorialStep(tutorialStep - 1));
+tutorialUi.next.addEventListener("click", advanceTutorial);
 tutorialUi.visual.addEventListener("pointerdown", (event) => {
   var _a23, _b9;
   tutorialPointerStart = { id: event.pointerId, x: event.clientX };
@@ -24837,7 +24838,7 @@ addEventListener("keydown", (event) => {
 $("#start").addEventListener("click", reset);
 $("#restart").addEventListener("click", reset);
 $("#levelContinue").addEventListener("click", continueFromLevelResult);
-$("#sound").addEventListener("click", (event) => {
+function toggleSound() {
   state.sound = !state.sound;
   if (state.sound) {
     const audio = ensureAudio();
@@ -24850,7 +24851,9 @@ $("#sound").addEventListener("click", (event) => {
     stopMusic();
   }
   syncAudioState();
-});
+  return state.sound;
+}
+$("#sound").addEventListener("click", toggleSound);
 addEventListener("pointerdown", () => {
   var _a23;
   if (state.sound && ((_a23 = state.audio) == null ? void 0 : _a23.state) === "suspended") state.audio.resume();
@@ -24862,6 +24865,20 @@ addEventListener("resize", () => {
 });
 window2.__bounceGrid = {
   roundsForTileCount,
+  // Native hosts call these controls directly. Browser events remain wired
+  // above for the web build, but are not required for WeChat touch input.
+  start: reset,
+  restart: reset,
+  move: (rowDelta, colDelta, haptic = true) => requestMove(rowDelta, colDelta, haptic),
+  swipe: (deltaX, deltaY, haptic = true) => {
+    if (Math.hypot(deltaX, deltaY) < 24) return false;
+    return requestMove(...moveForSwipe(deltaX, deltaY), haptic);
+  },
+  continueLevel: continueFromLevelResult,
+  tutorialPrevious: () => setTutorialStep(tutorialStep - 1),
+  tutorialNext: advanceTutorial,
+  tutorialClose: dismissTutorial,
+  toggleSound,
   getState: () => {
     var _a23, _b9;
     return {
@@ -24955,6 +24972,13 @@ function finiteNumber(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
+function touchValue(event, preferChanged = false) {
+  var _a23, _b9, _c, _d;
+  if (!event) return null;
+  const first = preferChanged ? (_a23 = event.changedTouches) == null ? void 0 : _a23[0] : (_b9 = event.touches) == null ? void 0 : _b9[0];
+  const second = preferChanged ? (_c = event.touches) == null ? void 0 : _c[0] : (_d = event.changedTouches) == null ? void 0 : _d[0];
+  return first || second || event;
+}
 function addCandidate(result, seen, x, y, source, scale, offsetY, width2, height2) {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return;
   if (x < -4 || y < -4 || x > width2 + 4 || y > height2 + 4) return;
@@ -25033,7 +25057,7 @@ var THEME = Object.freeze({
   alert: "#c97762"
 });
 var LOCAL_BEST_KEY = "happy-jump-wechat-local-best-v2";
-var BUILD_LABEL = "\u4F53\u9A8C\u7248 0.3.4";
+var BUILD_LABEL = "\u4F53\u9A8C\u7248 0.3.5";
 var art = {};
 var buttons = {};
 var leaderboardState = {
@@ -25056,6 +25080,7 @@ var userInfoButton = null;
 var touchDebug = null;
 var recentTouch = null;
 var lastTouchTestId = null;
+var touchReceipt = null;
 function loadArt(name, source) {
   const image = wxApi2.createImage();
   image.onload = () => {
@@ -25212,6 +25237,15 @@ function drawToast() {
   const y = height - 78;
   fillRect((width - w) / 2, y - 20, w, 40, "rgba(20,58,74,0.9)");
   text(toast.textContent, width / 2, y, 13, "#ffffff", "center", "700");
+}
+function drawTouchReceipt() {
+  var _a23, _b9;
+  if (!touchReceipt || Date.now() >= touchReceipt.until) return;
+  const label = `\u89E6\u6478\u5DF2\u63A5\u6536 ${touchReceipt.count}`;
+  const w = 112;
+  const y = Math.max(18, Number(((_b9 = (_a23 = wxApi2.getMenuButtonBoundingClientRect) == null ? void 0 : _a23.call(wxApi2)) == null ? void 0 : _b9.bottom) || 0) + 10);
+  fillRect((width - w) / 2, y, w, 28, "rgba(45,116,102,0.92)", 14);
+  text(label, width / 2, y + 14, 11, "#fffdf8", "center", "700");
 }
 function modalBase() {
   context.fillStyle = "rgba(17,50,65,0.46)";
@@ -25370,6 +25404,7 @@ function draw(state2, levels) {
   else if (screen === "result") drawResult(state2);
   else drawLeaderboard();
   if (screen !== "tutorial") drawToast();
+  drawTouchReceipt();
   texture.needsUpdate = true;
 }
 function writeDevtoolsState(state2) {
@@ -25492,26 +25527,23 @@ function syncProfileButton(x, y, w, h) {
 function hideProfileButton() {
   userInfoButton == null ? void 0 : userInfoButton.hide();
 }
-function clickDummy(id) {
-  document3.querySelector(`#${id}`).dispatchEvent({ type: "click", currentTarget: document3.querySelector(`#${id}`) });
-}
-function handleTap(point) {
+function handleTap(point, homeFallback = false) {
   const screen = screenForState();
   if (screen === "home") {
-    if (inside(point, buttons.start)) clickDummy("start");
-    else if (inside(point, buttons.leaderboard)) openLeaderboard("home");
+    if (inside(point, buttons.leaderboard)) openLeaderboard("home");
+    else if (homeFallback || inside(point, buttons.start)) board.start();
   } else if (screen === "tutorial") {
-    if (inside(point, buttons.tutorialPrev)) clickDummy("tutorialPrev");
-    else if (inside(point, buttons.tutorialNext)) clickDummy("tutorialNext");
-    else if (inside(point, buttons.tutorialClose)) clickDummy("tutorialClose");
-  } else if (screen === "game" && inside(point, buttons.sound)) clickDummy("sound");
-  else if (screen === "levelResult" && inside(point, buttons.continue)) clickDummy("levelContinue");
+    if (inside(point, buttons.tutorialPrev)) board.tutorialPrevious();
+    else if (inside(point, buttons.tutorialNext)) board.tutorialNext();
+    else if (inside(point, buttons.tutorialClose)) board.tutorialClose();
+  } else if (screen === "game" && inside(point, buttons.sound)) board.toggleSound();
+  else if (screen === "levelResult" && inside(point, buttons.continue)) board.continueLevel();
   else if (screen === "result") {
-    if (inside(point, buttons.restart)) clickDummy("restart");
+    if (inside(point, buttons.restart)) board.restart();
     else if (inside(point, buttons.resultLeaderboard)) openLeaderboard("result");
   } else if (screen === "leaderboard" && inside(point, buttons.back)) {
     manualScreen = null;
-    if (previousScreen === "home" && (latestState == null ? void 0 : latestState.over)) clickDummy("restart");
+    if (previousScreen === "home" && (latestState == null ? void 0 : latestState.over)) board.restart();
     lastSignature = "";
   }
 }
@@ -25530,61 +25562,95 @@ function pointForTouch(value) {
   return buttonPoint || points[0] || null;
 }
 function duplicateTouch(phase, point) {
-  if (!point) return false;
+  var _a23, _b9;
   const now2 = Date.now();
-  const duplicate = recentTouch && recentTouch.phase === phase && now2 - recentTouch.at < 80 && Math.hypot(point.x - recentTouch.x, point.y - recentTouch.y) < 2;
-  recentTouch = { phase, x: point.x, y: point.y, at: now2 };
+  const x = (_a23 = point == null ? void 0 : point.x) != null ? _a23 : -9999;
+  const y = (_b9 = point == null ? void 0 : point.y) != null ? _b9 : -9999;
+  const duplicate = recentTouch && recentTouch.phase === phase && now2 - recentTouch.at < 80 && Math.hypot(x - recentTouch.x, y - recentTouch.y) < 2;
+  recentTouch = { phase, x, y, at: now2 };
   return duplicate;
 }
 function pointerEvent(type, point) {
   return { type, clientX: point.x, clientY: point.y, pointerId: 1, pointerType: "touch", preventDefault() {
   } };
 }
+function acknowledgeTouch(phase, point, event) {
+  var _a23, _b9;
+  const count = ((touchReceipt == null ? void 0 : touchReceipt.count) || 0) + (phase === "start" ? 1 : 0);
+  touchReceipt = { count, until: Date.now() + 1400 };
+  touchDebug = {
+    phase,
+    point,
+    touches: ((_a23 = event == null ? void 0 : event.touches) == null ? void 0 : _a23.length) || 0,
+    changedTouches: ((_b9 = event == null ? void 0 : event.changedTouches) == null ? void 0 : _b9.length) || 0,
+    eventCoordinates: Boolean(event && ("clientX" in event || "pageX" in event || "x" in event))
+  };
+  lastSignature = "";
+}
 function onTouchStart(event) {
-  var _a23, _b9, _c, _d, _e;
-  const value = ((_a23 = event.touches) == null ? void 0 : _a23[0]) || ((_b9 = event.changedTouches) == null ? void 0 : _b9[0]);
+  var _a23, _b9;
+  const value = touchValue(event);
   const candidates = pointsForTouch(value);
   const point = pointForTouch(value);
-  touchDebug = { phase: "start", point, candidates, touches: ((_c = event.touches) == null ? void 0 : _c.length) || 0, changedTouches: ((_d = event.changedTouches) == null ? void 0 : _d.length) || 0 };
-  if (!point) return;
   if (duplicateTouch("start", point)) return;
+  acknowledgeTouch("start", point, event);
+  touchDebug.candidates = candidates;
+  if (screenForState() === "home") {
+    handleTap(point, true);
+    touch = { start: point, last: point, canvas: false, handled: true };
+    (_a23 = wxApi2.vibrateShort) == null ? void 0 : _a23.call(wxApi2, { type: "light" });
+    return;
+  }
+  if (!point) return;
   const screen = screenForState();
   const uiButton = Object.values(buttons).some((rect) => inside(point, rect));
   if (uiButton) {
     handleTap(point);
     touch = { start: point, last: point, canvas: false, handled: true };
-    (_e = wxApi2.vibrateShort) == null ? void 0 : _e.call(wxApi2, { type: "light" });
+    (_b9 = wxApi2.vibrateShort) == null ? void 0 : _b9.call(wxApi2, { type: "light" });
     return;
   }
-  touch = { start: point, last: point, canvas: screen === "game" && !uiButton };
-  if (touch.canvas) {
+  touch = {
+    start: point,
+    last: point,
+    canvas: screen === "game" && !uiButton,
+    directGame: screen === "game" && !uiButton && typeof board.swipe === "function",
+    moved: false
+  };
+  if (touch.canvas && !touch.directGame) {
     nativeCanvas.dispatchEvent(pointerEvent("pointerdown", point));
     globalThis.__happyJumpPlatform.dispatchEvent(pointerEvent("pointerdown", point));
   }
 }
 function onTouchMove(event) {
-  var _a23, _b9, _c, _d;
-  const point = pointForTouch(((_a23 = event.touches) == null ? void 0 : _a23[0]) || ((_b9 = event.changedTouches) == null ? void 0 : _b9[0]));
-  touchDebug = { phase: "move", point, touches: ((_c = event.touches) == null ? void 0 : _c.length) || 0, changedTouches: ((_d = event.changedTouches) == null ? void 0 : _d.length) || 0 };
+  const point = pointForTouch(touchValue(event));
+  acknowledgeTouch("move", point, event);
   if (!touch || !point) return;
   if (duplicateTouch("move", point)) return;
   touch.last = point;
-  if (touch.canvas) nativeCanvas.dispatchEvent(pointerEvent("pointermove", point));
+  if (touch.directGame && !touch.moved && Math.hypot(point.x - touch.start.x, point.y - touch.start.y) >= 24) {
+    touch.moved = Boolean(board.swipe(point.x - touch.start.x, point.y - touch.start.y, true));
+    return;
+  }
+  if (touch.canvas && !touch.directGame) nativeCanvas.dispatchEvent(pointerEvent("pointermove", point));
 }
 function onTouchEnd(event) {
-  var _a23, _b9, _c, _d;
   if (!touch) return;
-  const point = pointForTouch(((_a23 = event.changedTouches) == null ? void 0 : _a23[0]) || ((_b9 = event.touches) == null ? void 0 : _b9[0])) || touch.last;
-  touchDebug = { phase: "end", point, touches: ((_c = event.touches) == null ? void 0 : _c.length) || 0, changedTouches: ((_d = event.changedTouches) == null ? void 0 : _d.length) || 0 };
+  const point = pointForTouch(touchValue(event, true)) || touch.last;
+  acknowledgeTouch("end", point, event);
   if (duplicateTouch("end", point)) return;
   const active = touch;
   touch = null;
   if (active.handled) return;
-  if (active.canvas) nativeCanvas.dispatchEvent(pointerEvent("pointerup", point));
+  if (active.directGame) {
+    const deltaX = point.x - active.start.x;
+    const deltaY = point.y - active.start.y;
+    if (!active.moved && Math.hypot(deltaX, deltaY) >= 24) board.swipe(deltaX, deltaY, true);
+  } else if (active.canvas) nativeCanvas.dispatchEvent(pointerEvent("pointerup", point));
   else if (Math.hypot(point.x - active.start.x, point.y - active.start.y) < 16) handleTap(point);
 }
 function onTouchCancel() {
-  if (touch == null ? void 0 : touch.canvas) nativeCanvas.dispatchEvent(pointerEvent("pointercancel", touch.last));
+  if ((touch == null ? void 0 : touch.canvas) && !touch.directGame) nativeCanvas.dispatchEvent(pointerEvent("pointercancel", touch.last));
   touch = null;
 }
 var _a15;
@@ -25603,6 +25669,13 @@ var _a21, _b7;
 (_b7 = (_a21 = nativeCanvas).addEventListener) == null ? void 0 : _b7.call(_a21, "touchend", onTouchEnd);
 var _a22, _b8;
 (_b8 = (_a22 = nativeCanvas).addEventListener) == null ? void 0 : _b8.call(_a22, "touchcancel", onTouchCancel);
+try {
+  nativeCanvas.ontouchstart = onTouchStart;
+  nativeCanvas.ontouchmove = onTouchMove;
+  nativeCanvas.ontouchend = onTouchEnd;
+  nativeCanvas.ontouchcancel = onTouchCancel;
+} catch (e) {
+}
 function runDevtoolsTouchTest() {
   var _a23;
   if (!isDevtools) return;
@@ -25631,6 +25704,7 @@ function renderWechatOverlay({ renderer: renderer2, state: state2, levels }) {
   previousOver = state2.over;
   const toast = document3.querySelector("#toast");
   const tutorial = document3.querySelector("#tutorial");
+  const now2 = Date.now();
   const signature = JSON.stringify([
     screenForState(state2),
     state2.level,
@@ -25650,9 +25724,10 @@ function renderWechatOverlay({ renderer: renderer2, state: state2, levels }) {
     leaderboardState.entries.length,
     tutorial.classList.contains("show"),
     document3.querySelector("#tutorialKicker").textContent,
-    document3.querySelector("#tutorialTitle").textContent
+    document3.querySelector("#tutorialTitle").textContent,
+    (touchReceipt == null ? void 0 : touchReceipt.count) || 0,
+    Boolean(touchReceipt && now2 < touchReceipt.until)
   ]);
-  const now2 = Date.now();
   if (signature !== lastSignature || now2 - lastDraw > 500) {
     draw(board.getState(), levels);
     writeDevtoolsState(state2);

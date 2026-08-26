@@ -84,18 +84,30 @@ test('the result screen can focus and activate its registered restart control', 
   assert.match(game, /\$\('#restart'\)\.addEventListener\('click', reset\)/);
 });
 
-test('physical-device taps accept page coordinates and trigger UI on touch start', async () => {
-  const ui = await source('wechat-minigame/src/wechat-ui.mjs');
+test('physical-device input bypasses synthetic browser events for controls and swipes', async () => {
+  const [game, ui] = await Promise.all([
+    source('game.js'),
+    source('wechat-minigame/src/wechat-ui.mjs')
+  ]);
+  assert.match(game, /start: reset/);
+  assert.match(game, /move: \(rowDelta, colDelta/);
+  assert.match(game, /swipe: \(deltaX, deltaY/);
+  assert.match(game, /tutorialNext: advanceTutorial/);
   assert.match(ui, /touchPoints\(value/);
+  assert.match(ui, /touchValue\(event/);
   assert.match(ui, /devicePixelRatio: pixelRatio/);
-  assert.match(ui, /if \(uiButton\) \{\s*handleTap\(point\)/);
+  assert.match(ui, /handleTap\(point, true\)/);
+  assert.match(ui, /board\.start\(\)/);
+  assert.match(ui, /board\.swipe\(point\.x - touch\.start\.x/);
   assert.match(ui, /active\.handled/);
   assert.match(ui, /nativeCanvas\.addEventListener\?\.\('touchstart', onTouchStart\)/);
+  assert.match(ui, /nativeCanvas\.ontouchstart = onTouchStart/);
+  assert.match(ui, /触摸已接收/);
 });
 
 test('the home screen identifies the current physical-device preview build', async () => {
   const ui = await source('wechat-minigame/src/wechat-ui.mjs');
-  assert.match(ui, /BUILD_LABEL = '体验版 0\.3\.4'/);
+  assert.match(ui, /BUILD_LABEL = '体验版 0\.3\.5'/);
   assert.match(ui, /text\(BUILD_LABEL/);
 });
 
@@ -133,9 +145,9 @@ test('first-time WeChat players receive the complete live-board tutorial', async
   assert.match(game, /if \(platform\.canvas\) return true;/);
   assert.match(ui, /return 'tutorial'/);
   assert.match(ui, /function drawTutorialVisual/);
-  assert.match(ui, /clickDummy\('tutorialPrev'\)/);
-  assert.match(ui, /clickDummy\('tutorialNext'\)/);
-  assert.match(ui, /clickDummy\('tutorialClose'\)/);
+  assert.match(ui, /board\.tutorialPrevious\(\)/);
+  assert.match(ui, /board\.tutorialNext\(\)/);
+  assert.match(ui, /board\.tutorialClose\(\)/);
 });
 
 test('developer-tool diagnostics expose runtime state without running on phones', async () => {

@@ -2,7 +2,7 @@ import * as THREE from '../../vendor/three/three.module.js';
 import config from './config.js';
 import leaderboardModule from './cloud-leaderboard.js';
 import { height, nativeCanvas, pixelRatio, ratio, width } from './mini-shim.mjs';
-import { touchPoints } from './touch-coordinates.mjs';
+import { touchPoints, touchValue } from './touch-coordinates.mjs';
 
 const { WechatLeaderboard } = leaderboardModule;
 const wxApi = globalThis.wx;
@@ -26,7 +26,7 @@ const THEME = Object.freeze({
   aqua: '#53a895', aquaDark: '#397f70', warm: '#e4ce8b', alert: '#c97762'
 });
 const LOCAL_BEST_KEY = 'happy-jump-wechat-local-best-v2';
-const BUILD_LABEL = '体验版 0.3.4';
+const BUILD_LABEL = '体验版 0.3.5';
 const art = {};
 const buttons = {};
 const leaderboardState = {
@@ -50,6 +50,7 @@ let userInfoButton = null;
 let touchDebug = null;
 let recentTouch = null;
 let lastTouchTestId = null;
+let touchReceipt = null;
 
 function loadArt(name, source) {
   const image = wxApi.createImage();
@@ -224,6 +225,15 @@ function drawToast() {
   text(toast.textContent, width / 2, y, 13, '#ffffff', 'center', '700');
 }
 
+function drawTouchReceipt() {
+  if (!touchReceipt || Date.now() >= touchReceipt.until) return;
+  const label = `触摸已接收 ${touchReceipt.count}`;
+  const w = 112;
+  const y = Math.max(18, Number(wxApi.getMenuButtonBoundingClientRect?.()?.bottom || 0) + 10);
+  fillRect((width - w) / 2, y, w, 28, 'rgba(45,116,102,0.92)', 14);
+  text(label, width / 2, y + 14, 11, '#fffdf8', 'center', '700');
+}
+
 function modalBase() {
   context.fillStyle = 'rgba(17,50,65,0.46)';
   context.fillRect(0, 0, width, height);
@@ -387,6 +397,7 @@ function draw(state, levels) {
   else if (screen === 'result') drawResult(state);
   else drawLeaderboard();
   if (screen !== 'tutorial') drawToast();
+  drawTouchReceipt();
   texture.needsUpdate = true;
 }
 
@@ -508,27 +519,23 @@ function hideProfileButton() {
   userInfoButton?.hide();
 }
 
-function clickDummy(id) {
-  document.querySelector(`#${id}`).dispatchEvent({ type: 'click', currentTarget: document.querySelector(`#${id}`) });
-}
-
-function handleTap(point) {
+function handleTap(point, homeFallback = false) {
   const screen = screenForState();
   if (screen === 'home') {
-    if (inside(point, buttons.start)) clickDummy('start');
-    else if (inside(point, buttons.leaderboard)) openLeaderboard('home');
+    if (inside(point, buttons.leaderboard)) openLeaderboard('home');
+    else if (homeFallback || inside(point, buttons.start)) board.start();
   } else if (screen === 'tutorial') {
-    if (inside(point, buttons.tutorialPrev)) clickDummy('tutorialPrev');
-    else if (inside(point, buttons.tutorialNext)) clickDummy('tutorialNext');
-    else if (inside(point, buttons.tutorialClose)) clickDummy('tutorialClose');
-  } else if (screen === 'game' && inside(point, buttons.sound)) clickDummy('sound');
-  else if (screen === 'levelResult' && inside(point, buttons.continue)) clickDummy('levelContinue');
+    if (inside(point, buttons.tutorialPrev)) board.tutorialPrevious();
+    else if (inside(point, buttons.tutorialNext)) board.tutorialNext();
+    else if (inside(point, buttons.tutorialClose)) board.tutorialClose();
+  } else if (screen === 'game' && inside(point, buttons.sound)) board.toggleSound();
+  else if (screen === 'levelResult' && inside(point, buttons.continue)) board.continueLevel();
   else if (screen === 'result') {
-    if (inside(point, buttons.restart)) clickDummy('restart');
+    if (inside(point, buttons.restart)) board.restart();
     else if (inside(point, buttons.resultLeaderboard)) openLeaderboard('result');
   } else if (screen === 'leaderboard' && inside(point, buttons.back)) {
     manualScreen = null;
-    if (previousScreen === 'home' && latestState?.over) clickDummy('restart');
+    if (previousScreen === 'home' && latestState?.over) board.restart();
     lastSignature = '';
   }
 }
@@ -550,11 +557,12 @@ function pointForTouch(value) {
 }
 
 function duplicateTouch(phase, point) {
-  if (!point) return false;
   const now = Date.now();
+  const x = point?.x ?? -9999;
+  const y = point?.y ?? -9999;
   const duplicate = recentTouch && recentTouch.phase === phase && now - recentTouch.at < 80
-    && Math.hypot(point.x - recentTouch.x, point.y - recentTouch.y) < 2;
-  recentTouch = { phase, x: point.x, y: point.y, at: now };
+    && Math.hypot(x - recentTouch.x, y - recentTouch.y) < 2;
+  recentTouch = { phase, x, y, at: now };
   return duplicate;
 }
 
@@ -562,13 +570,33 @@ function pointerEvent(type, point) {
   return { type, clientX: point.x, clientY: point.y, pointerId: 1, pointerType: 'touch', preventDefault() {} };
 }
 
+function acknowledgeTouch(phase, point, event) {
+  const count = (touchReceipt?.count || 0) + (phase === 'start' ? 1 : 0);
+  touchReceipt = { count, until: Date.now() + 1400 };
+  touchDebug = {
+    phase,
+    point,
+    touches: event?.touches?.length || 0,
+    changedTouches: event?.changedTouches?.length || 0,
+    eventCoordinates: Boolean(event && ('clientX' in event || 'pageX' in event || 'x' in event))
+  };
+  lastSignature = '';
+}
+
 function onTouchStart(event) {
-  const value = event.touches?.[0] || event.changedTouches?.[0];
+  const value = touchValue(event);
   const candidates = pointsForTouch(value);
   const point = pointForTouch(value);
-  touchDebug = { phase: 'start', point, candidates, touches: event.touches?.length || 0, changedTouches: event.changedTouches?.length || 0 };
-  if (!point) return;
   if (duplicateTouch('start', point)) return;
+  acknowledgeTouch('start', point, event);
+  touchDebug.candidates = candidates;
+  if (screenForState() === 'home') {
+    handleTap(point, true);
+    touch = { start: point, last: point, canvas: false, handled: true };
+    wxApi.vibrateShort?.({ type: 'light' });
+    return;
+  }
+  if (!point) return;
   const screen = screenForState();
   const uiButton = Object.values(buttons).some((rect) => inside(point, rect));
   if (uiButton) {
@@ -577,36 +605,50 @@ function onTouchStart(event) {
     wxApi.vibrateShort?.({ type: 'light' });
     return;
   }
-  touch = { start: point, last: point, canvas: screen === 'game' && !uiButton };
-  if (touch.canvas) {
+  touch = {
+    start: point,
+    last: point,
+    canvas: screen === 'game' && !uiButton,
+    directGame: screen === 'game' && !uiButton && typeof board.swipe === 'function',
+    moved: false
+  };
+  if (touch.canvas && !touch.directGame) {
     nativeCanvas.dispatchEvent(pointerEvent('pointerdown', point));
     globalThis.__happyJumpPlatform.dispatchEvent(pointerEvent('pointerdown', point));
   }
 }
 
 function onTouchMove(event) {
-  const point = pointForTouch(event.touches?.[0] || event.changedTouches?.[0]);
-  touchDebug = { phase: 'move', point, touches: event.touches?.length || 0, changedTouches: event.changedTouches?.length || 0 };
+  const point = pointForTouch(touchValue(event));
+  acknowledgeTouch('move', point, event);
   if (!touch || !point) return;
   if (duplicateTouch('move', point)) return;
   touch.last = point;
-  if (touch.canvas) nativeCanvas.dispatchEvent(pointerEvent('pointermove', point));
+  if (touch.directGame && !touch.moved && Math.hypot(point.x - touch.start.x, point.y - touch.start.y) >= 24) {
+    touch.moved = Boolean(board.swipe(point.x - touch.start.x, point.y - touch.start.y, true));
+    return;
+  }
+  if (touch.canvas && !touch.directGame) nativeCanvas.dispatchEvent(pointerEvent('pointermove', point));
 }
 
 function onTouchEnd(event) {
   if (!touch) return;
-  const point = pointForTouch(event.changedTouches?.[0] || event.touches?.[0]) || touch.last;
-  touchDebug = { phase: 'end', point, touches: event.touches?.length || 0, changedTouches: event.changedTouches?.length || 0 };
+  const point = pointForTouch(touchValue(event, true)) || touch.last;
+  acknowledgeTouch('end', point, event);
   if (duplicateTouch('end', point)) return;
   const active = touch;
   touch = null;
   if (active.handled) return;
-  if (active.canvas) nativeCanvas.dispatchEvent(pointerEvent('pointerup', point));
+  if (active.directGame) {
+    const deltaX = point.x - active.start.x;
+    const deltaY = point.y - active.start.y;
+    if (!active.moved && Math.hypot(deltaX, deltaY) >= 24) board.swipe(deltaX, deltaY, true);
+  } else if (active.canvas) nativeCanvas.dispatchEvent(pointerEvent('pointerup', point));
   else if (Math.hypot(point.x - active.start.x, point.y - active.start.y) < 16) handleTap(point);
 }
 
 function onTouchCancel() {
-  if (touch?.canvas) nativeCanvas.dispatchEvent(pointerEvent('pointercancel', touch.last));
+  if (touch?.canvas && !touch.directGame) nativeCanvas.dispatchEvent(pointerEvent('pointercancel', touch.last));
   touch = null;
 }
 
@@ -618,6 +660,12 @@ nativeCanvas.addEventListener?.('touchstart', onTouchStart);
 nativeCanvas.addEventListener?.('touchmove', onTouchMove);
 nativeCanvas.addEventListener?.('touchend', onTouchEnd);
 nativeCanvas.addEventListener?.('touchcancel', onTouchCancel);
+try {
+  nativeCanvas.ontouchstart = onTouchStart;
+  nativeCanvas.ontouchmove = onTouchMove;
+  nativeCanvas.ontouchend = onTouchEnd;
+  nativeCanvas.ontouchcancel = onTouchCancel;
+} catch { /* Some base-library canvases expose read-only handler fields. */ }
 
 function runDevtoolsTouchTest() {
   if (!isDevtools) return;
@@ -649,15 +697,16 @@ function renderWechatOverlay({ renderer, state, levels }) {
 
   const toast = document.querySelector('#toast');
   const tutorial = document.querySelector('#tutorial');
+  const now = Date.now();
   const signature = JSON.stringify([
     screenForState(state), state.level, state.score, state.rounds, state.lives, Math.ceil(state.time),
     state.sound, state.levelResultOpen, state.over, state.nextQueue.slice(0, 4), toast.textContent,
     toast.classList.contains('show'), leaderboardState.status, leaderboardState.player.bestScore,
     leaderboardState.rank, leaderboardState.entries.length,
     tutorial.classList.contains('show'), document.querySelector('#tutorialKicker').textContent,
-    document.querySelector('#tutorialTitle').textContent
+    document.querySelector('#tutorialTitle').textContent,
+    touchReceipt?.count || 0, Boolean(touchReceipt && now < touchReceipt.until)
   ]);
-  const now = Date.now();
   if (signature !== lastSignature || now - lastDraw > 500) {
     draw(board.getState(), levels);
     writeDevtoolsState(state);

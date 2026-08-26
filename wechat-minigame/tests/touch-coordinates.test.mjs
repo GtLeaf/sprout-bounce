@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { touchPoint, touchPoints } from '../src/touch-coordinates.mjs';
+import { touchPoint, touchPoints, touchValue } from '../src/touch-coordinates.mjs';
 
 const metrics = {
   width: 390,
@@ -38,4 +38,14 @@ test('retains multiple valid interpretations so UI hit testing can select its bu
   const points = touchPoints({ clientX: 195, clientY: 745, screenX: 195, screenY: 792 }, metrics);
   assert.ok(points.some((point) => point.x === 195 && point.y === 745));
   assert.ok(points.every((point) => point.x >= -4 && point.x <= 394 && point.y >= -4 && point.y <= 848));
+});
+
+test('accepts all touch payload shapes emitted by iOS mini-game runtimes', () => {
+  const active = { clientX: 10, clientY: 20 };
+  const changed = { pageX: 30, pageY: 40 };
+  const direct = { x: 50, y: 60 };
+  assert.equal(touchValue({ touches: [active], changedTouches: [changed] }), active);
+  assert.equal(touchValue({ touches: [], changedTouches: [changed] }), changed);
+  assert.equal(touchValue(direct), direct);
+  assert.equal(touchValue({ touches: [active], changedTouches: [changed] }, true), changed);
 });

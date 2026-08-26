@@ -124,12 +124,14 @@ function setTutorialStep(nextStep) {
   renderTutorialStep();
 }
 
-tutorialUi.close.addEventListener('click', dismissTutorial);
-tutorialUi.previous.addEventListener('click', () => setTutorialStep(tutorialStep - 1));
-tutorialUi.next.addEventListener('click', () => {
+function advanceTutorial() {
   if (tutorialStep === TUTORIAL_STEPS.length - 1) dismissTutorial();
   else setTutorialStep(tutorialStep + 1);
-});
+}
+
+tutorialUi.close.addEventListener('click', dismissTutorial);
+tutorialUi.previous.addEventListener('click', () => setTutorialStep(tutorialStep - 1));
+tutorialUi.next.addEventListener('click', advanceTutorial);
 tutorialUi.visual.addEventListener('pointerdown', (event) => {
   tutorialPointerStart = { id: event.pointerId, x: event.clientX };
   tutorialUi.visual.setPointerCapture?.(event.pointerId);
@@ -2538,7 +2540,7 @@ addEventListener('keydown', (event) => {
 $('#start').addEventListener('click', reset);
 $('#restart').addEventListener('click', reset);
 $('#levelContinue').addEventListener('click', continueFromLevelResult);
-$('#sound').addEventListener('click', (event) => {
+function toggleSound() {
   state.sound = !state.sound;
   if (state.sound) {
     const audio = ensureAudio();
@@ -2551,7 +2553,9 @@ $('#sound').addEventListener('click', (event) => {
     stopMusic();
   }
   syncAudioState();
-});
+  return state.sound;
+}
+$('#sound').addEventListener('click', toggleSound);
 addEventListener('pointerdown', () => {
   if (state.sound && state.audio?.state === 'suspended') state.audio.resume();
 }, { passive: true });
@@ -2563,6 +2567,20 @@ addEventListener('resize', () => {
 
 window.__bounceGrid = {
   roundsForTileCount,
+  // Native hosts call these controls directly. Browser events remain wired
+  // above for the web build, but are not required for WeChat touch input.
+  start: reset,
+  restart: reset,
+  move: (rowDelta, colDelta, haptic = true) => requestMove(rowDelta, colDelta, haptic),
+  swipe: (deltaX, deltaY, haptic = true) => {
+    if (Math.hypot(deltaX, deltaY) < 24) return false;
+    return requestMove(...moveForSwipe(deltaX, deltaY), haptic);
+  },
+  continueLevel: continueFromLevelResult,
+  tutorialPrevious: () => setTutorialStep(tutorialStep - 1),
+  tutorialNext: advanceTutorial,
+  tutorialClose: dismissTutorial,
+  toggleSound,
   getState: () => ({
     running: state.running,
     over: state.over,

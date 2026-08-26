@@ -3,6 +3,13 @@ function finiteNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+export function touchValue(event, preferChanged = false) {
+  if (!event) return null;
+  const first = preferChanged ? event.changedTouches?.[0] : event.touches?.[0];
+  const second = preferChanged ? event.touches?.[0] : event.changedTouches?.[0];
+  return first || second || event;
+}
+
 function addCandidate(result, seen, x, y, source, scale, offsetY, width, height) {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return;
   if (x < -4 || y < -4 || x > width + 4 || y > height + 4) return;
