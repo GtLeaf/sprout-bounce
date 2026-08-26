@@ -24973,6 +24973,7 @@ var THEME = Object.freeze({
   alert: "#c97762"
 });
 var LOCAL_BEST_KEY = "happy-jump-wechat-local-best-v2";
+var BUILD_LABEL = "\u4F53\u9A8C\u7248 0.3.3";
 var art = {};
 var buttons = {};
 var leaderboardState = {
@@ -25108,6 +25109,7 @@ function drawHome() {
   text(leaderboardState.rank ? `\u7B2C ${leaderboardState.rank} \u540D` : "\u6682\u65E0", x + w / 2 + 8, y + 116, 21, THEME.aquaDark, "left", "700");
   button("start", "\u5F00\u59CB\u6311\u6218", x + 18, y + h - 105, w - 36, 49, true, art.forward);
   button("leaderboard", "\u5168\u7403\u6392\u884C\u699C", x + 18, y + h - 46, w - 36, 34, false);
+  text(BUILD_LABEL, width - 18, height - 8, 9, "rgba(255,255,255,0.78)", "right", "500");
   syncProfileButton(x + w - 150, y + 14, 132, 28);
 }
 function drawHud(state2, levels) {

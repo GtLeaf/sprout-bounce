@@ -23,6 +23,7 @@ const THEME = Object.freeze({
   aqua: '#53a895', aquaDark: '#397f70', warm: '#e4ce8b', alert: '#c97762'
 });
 const LOCAL_BEST_KEY = 'happy-jump-wechat-local-best-v2';
+const BUILD_LABEL = '体验版 0.3.3';
 const art = {};
 const buttons = {};
 const leaderboardState = {
@@ -173,6 +174,7 @@ function drawHome() {
 
   button('start', '开始挑战', x + 18, y + h - 105, w - 36, 49, true, art.forward);
   button('leaderboard', '全球排行榜', x + 18, y + h - 46, w - 36, 34, false);
+  text(BUILD_LABEL, width - 18, height - 8, 9, 'rgba(255,255,255,0.78)', 'right', '500');
   syncProfileButton(x + w - 150, y + 14, 132, 28);
 }
 

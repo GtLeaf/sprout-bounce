@@ -90,6 +90,12 @@ test('physical-device taps accept page coordinates and trigger UI on touch start
   assert.match(ui, /active\.handled/);
 });
 
+test('the home screen identifies the current physical-device preview build', async () => {
+  const ui = await source('wechat-minigame/src/wechat-ui.mjs');
+  assert.match(ui, /BUILD_LABEL = '体验版 0\.3\.3'/);
+  assert.match(ui, /text\(BUILD_LABEL/);
+});
+
 test('the mini game packages and renders the original branded key art', async () => {
   const ui = await source('wechat-minigame/src/wechat-ui.mjs');
   const assets = await Promise.all([
