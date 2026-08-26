@@ -138,7 +138,7 @@ var info = ((_a = wxApi == null ? void 0 : wxApi.getWindowInfo) == null ? void 0
 };
 var width = Number(info.windowWidth || info.screenWidth || 375);
 var height = Number(info.windowHeight || info.screenHeight || 667);
-var ratio = Math.min(Number(info.pixelRatio || 1), 2);
+var ratio = Math.min(Number(info.pixelRatio || 1), 1.5);
 var _a2;
 var nativeCanvas = (_a2 = wxApi == null ? void 0 : wxApi.createCanvas) == null ? void 0 : _a2.call(wxApi);
 var globalListeners = /* @__PURE__ */ new Map();
@@ -315,8 +315,8 @@ var documentShim = {
   documentElement: makeElement("html", "html"),
   hidden: false,
   querySelector(selector) {
-    var _a11;
-    const id = (_a11 = String(selector).match(/^#([\w-]+)/)) == null ? void 0 : _a11[1];
+    var _a12;
+    const id = (_a12 = String(selector).match(/^#([\w-]+)/)) == null ? void 0 : _a12[1];
     return id ? elements.get(id) || makeElement(id) : makeElement("", "div");
   },
   querySelectorAll() {
@@ -333,8 +333,8 @@ var documentShim = {
   }
 };
 var navigatorShim = { maxTouchPoints: 1, vibrate: (duration) => {
-  var _a11;
-  return (_a11 = wxApi == null ? void 0 : wxApi.vibrateShort) == null ? void 0 : _a11.call(wxApi, { type: duration > 10 ? "heavy" : "light" });
+  var _a12;
+  return (_a12 = wxApi == null ? void 0 : wxApi.vibrateShort) == null ? void 0 : _a12.call(wxApi, { type: duration > 10 ? "heavy" : "light" });
 } };
 var performanceShim = globalThis.performance || { now: () => Date.now() };
 var frame = globalThis.requestAnimationFrame || ((callback) => setTimeout(() => callback(performanceShim.now()), 16));
@@ -346,8 +346,8 @@ var SearchParams = class {
     return new RegExp(`(?:^|[?&])${key}(?:=|&|$)`).test(this.query);
   }
   get(key) {
-    var _a11;
-    return ((_a11 = this.query.match(new RegExp(`(?:^|[?&])${key}=([^&]*)`))) == null ? void 0 : _a11[1]) || null;
+    var _a12;
+    return ((_a12 = this.query.match(new RegExp(`(?:^|[?&])${key}=([^&]*)`))) == null ? void 0 : _a12[1]) || null;
   }
 };
 if (!globalThis.AudioContext && (wxApi == null ? void 0 : wxApi.createWebAudioContext)) {
@@ -358,17 +358,17 @@ if (!globalThis.AudioContext && (wxApi == null ? void 0 : wxApi.createWebAudioCo
 }
 var storage = {
   getItem(key) {
-    var _a11;
-    const value = (_a11 = wxApi == null ? void 0 : wxApi.getStorageSync) == null ? void 0 : _a11.call(wxApi, key);
+    var _a12;
+    const value = (_a12 = wxApi == null ? void 0 : wxApi.getStorageSync) == null ? void 0 : _a12.call(wxApi, key);
     return value == null ? null : String(value);
   },
   setItem(key, value) {
-    var _a11;
-    (_a11 = wxApi == null ? void 0 : wxApi.setStorageSync) == null ? void 0 : _a11.call(wxApi, key, String(value));
+    var _a12;
+    (_a12 = wxApi == null ? void 0 : wxApi.setStorageSync) == null ? void 0 : _a12.call(wxApi, key, String(value));
   },
   removeItem(key) {
-    var _a11;
-    (_a11 = wxApi == null ? void 0 : wxApi.removeStorageSync) == null ? void 0 : _a11.call(wxApi, key);
+    var _a12;
+    (_a12 = wxApi == null ? void 0 : wxApi.removeStorageSync) == null ? void 0 : _a12.call(wxApi, key);
   }
 };
 var fileFetch = (wxApi == null ? void 0 : wxApi.getFileSystemManager) ? (filePath) => new Promise((resolve, reject) => {
@@ -407,6 +407,12 @@ globalThis.__happyJumpPlatform = {
   fetch: globalThis.fetch || fileFetch,
   URLSearchParams: globalThis.URLSearchParams || SearchParams
 };
+globalThis.__happyJumpPlatform.loadImage = (source) => new Promise((resolve, reject) => {
+  const image = wxApi.createImage();
+  image.onload = () => resolve(image);
+  image.onerror = reject;
+  image.src = source;
+});
 
 // ../vendor/three/three.module.js
 /**
@@ -22162,10 +22168,10 @@ function sanitizeDisplayName(value) {
   return String(value != null ? value : "").replace(/<[^>]*>/g, "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 20);
 }
 function normalizeLeaderboardEntry(row) {
-  var _a11;
+  var _a12;
   const profile = Array.isArray(row == null ? void 0 : row.profiles) ? row.profiles[0] : row == null ? void 0 : row.profiles;
   return {
-    userId: String((_a11 = row == null ? void 0 : row.user_id) != null ? _a11 : ""),
+    userId: String((_a12 = row == null ? void 0 : row.user_id) != null ? _a12 : ""),
     displayName: sanitizeDisplayName(profile == null ? void 0 : profile.display_name) || "\u795E\u79D8\u73A9\u5BB6",
     score: Math.max(0, Math.floor(Number(row == null ? void 0 : row.best_score) || 0)),
     level: Math.max(1, Math.floor(Number(row == null ? void 0 : row.best_level) || 1)),
@@ -22198,12 +22204,12 @@ var CloudLeaderboardService = class {
     return Boolean(this.url && this.anonKey && this.fetch);
   }
   get user() {
-    var _a11;
-    return ((_a11 = this.session) == null ? void 0 : _a11.user) || null;
+    var _a12;
+    return ((_a12 = this.session) == null ? void 0 : _a12.user) || null;
   }
   get displayName() {
-    var _a11, _b2, _c;
-    return sanitizeDisplayName(((_a11 = this.profile) == null ? void 0 : _a11.display_name) || ((_c = (_b2 = this.user) == null ? void 0 : _b2.user_metadata) == null ? void 0 : _c.display_name)) || null;
+    var _a12, _b2, _c;
+    return sanitizeDisplayName(((_a12 = this.profile) == null ? void 0 : _a12.display_name) || ((_c = (_b2 = this.user) == null ? void 0 : _b2.user_metadata) == null ? void 0 : _c.display_name)) || null;
   }
   subscribe(listener) {
     this.listeners.add(listener);
@@ -22213,7 +22219,7 @@ var CloudLeaderboardService = class {
     const snapshot = { enabled: this.enabled, user: this.user, profile: this.profile, displayName: this.displayName };
     for (const listener of this.listeners) listener(snapshot);
   }
-  authHeaders(accessToken = ((_a11) => (_a11 = this.session) == null ? void 0 : _a11.access_token)()) {
+  authHeaders(accessToken = ((_a12) => (_a12 = this.session) == null ? void 0 : _a12.access_token)()) {
     return {
       apikey: this.anonKey,
       Authorization: `Bearer ${accessToken || this.anonKey}`,
@@ -22221,31 +22227,31 @@ var CloudLeaderboardService = class {
     };
   }
   async request(path, { method = "GET", body: body2, accessToken, headers = {} } = {}) {
-    var _a11, _b2;
+    var _a12, _b2;
     if (!this.enabled) throw new Error("\u4E91\u7AEF\u6392\u884C\u699C\u5C1A\u672A\u914D\u7F6E");
     const response = await this.fetch(`${this.url}${path}`, {
       method,
       headers: { ...this.authHeaders(accessToken), ...headers },
       body: body2 === void 0 ? void 0 : JSON.stringify(body2)
     });
-    const contentType = ((_b2 = (_a11 = response.headers) == null ? void 0 : _a11.get) == null ? void 0 : _b2.call(_a11, "content-type")) || "";
+    const contentType = ((_b2 = (_a12 = response.headers) == null ? void 0 : _a12.get) == null ? void 0 : _b2.call(_a12, "content-type")) || "";
     const payload = contentType.includes("json") ? await response.json() : await response.text();
     if (!response.ok) throw new Error(messageFromPayload(payload, `\u8BF7\u6C42\u5931\u8D25 (${response.status})`));
     return payload;
   }
   persistSession(session) {
-    var _a11, _b2;
+    var _a12, _b2;
     this.session = (session == null ? void 0 : session.access_token) ? session : null;
     try {
-      if (this.session) (_a11 = this.storage) == null ? void 0 : _a11.setItem(SESSION_STORAGE_KEY, JSON.stringify(this.session));
+      if (this.session) (_a12 = this.storage) == null ? void 0 : _a12.setItem(SESSION_STORAGE_KEY, JSON.stringify(this.session));
       else (_b2 = this.storage) == null ? void 0 : _b2.removeItem(SESSION_STORAGE_KEY);
     } catch (e) {
     }
   }
   readStoredSession() {
-    var _a11;
+    var _a12;
     try {
-      const value = JSON.parse(((_a11 = this.storage) == null ? void 0 : _a11.getItem(SESSION_STORAGE_KEY)) || "null");
+      const value = JSON.parse(((_a12 = this.storage) == null ? void 0 : _a12.getItem(SESSION_STORAGE_KEY)) || "null");
       return (value == null ? void 0 : value.access_token) && (value == null ? void 0 : value.refresh_token) ? value : null;
     } catch (e) {
       return null;
@@ -22276,8 +22282,8 @@ var CloudLeaderboardService = class {
     }
   }
   async refreshSession() {
-    var _a11;
-    if (!((_a11 = this.session) == null ? void 0 : _a11.refresh_token)) throw new Error("\u767B\u5F55\u5DF2\u5931\u6548\uFF0C\u8BF7\u91CD\u65B0\u767B\u5F55");
+    var _a12;
+    if (!((_a12 = this.session) == null ? void 0 : _a12.refresh_token)) throw new Error("\u767B\u5F55\u5DF2\u5931\u6548\uFF0C\u8BF7\u91CD\u65B0\u767B\u5F55");
     const session = await this.request("/auth/v1/token?grant_type=refresh_token", {
       method: "POST",
       accessToken: this.anonKey,
@@ -22314,8 +22320,8 @@ var CloudLeaderboardService = class {
     return session;
   }
   async signOut() {
-    var _a11;
-    const accessToken = (_a11 = this.session) == null ? void 0 : _a11.access_token;
+    var _a12;
+    const accessToken = (_a12 = this.session) == null ? void 0 : _a12.access_token;
     try {
       if (accessToken) await this.request("/auth/v1/logout", { method: "POST", accessToken });
     } catch (e) {
@@ -22326,8 +22332,8 @@ var CloudLeaderboardService = class {
     }
   }
   async loadProfile() {
-    var _a11;
-    if (!((_a11 = this.user) == null ? void 0 : _a11.id)) return null;
+    var _a12;
+    if (!((_a12 = this.user) == null ? void 0 : _a12.id)) return null;
     const rows = await this.request(`/rest/v1/profiles?select=user_id,display_name&user_id=eq.${encodeURIComponent(this.user.id)}&limit=1`);
     this.profile = Array.isArray(rows) ? rows[0] || null : null;
     return this.profile;
@@ -22338,8 +22344,8 @@ var CloudLeaderboardService = class {
     return (Array.isArray(rows) ? rows : []).map(normalizeLeaderboardEntry);
   }
   async getMyBest() {
-    var _a11;
-    if (!((_a11 = this.user) == null ? void 0 : _a11.id)) return null;
+    var _a12;
+    if (!((_a12 = this.user) == null ? void 0 : _a12.id)) return null;
     const rows = await this.request(`/rest/v1/leaderboard_entries?select=user_id,best_score,best_level,won,games_played,updated_at,profiles(display_name)&user_id=eq.${encodeURIComponent(this.user.id)}&limit=1`);
     return (rows == null ? void 0 : rows[0]) ? normalizeLeaderboardEntry(rows[0]) : null;
   }
@@ -22464,7 +22470,7 @@ function rememberTutorial() {
   }
 }
 function isMobileTutorialVisit() {
-  if (platform.canvas) return false;
+  if (platform.canvas) return true;
   if (TUTORIAL_QUERY === "1") return true;
   if (TUTORIAL_QUERY === "0") return false;
   return innerWidth <= 900 && (innerWidth <= 600 || navigator2.maxTouchPoints > 0 || matchMedia("(pointer: coarse)").matches);
@@ -22512,9 +22518,9 @@ tutorialUi.next.addEventListener("click", () => {
   else setTutorialStep(tutorialStep + 1);
 });
 tutorialUi.visual.addEventListener("pointerdown", (event) => {
-  var _a11, _b2;
+  var _a12, _b2;
   tutorialPointerStart = { id: event.pointerId, x: event.clientX };
-  (_b2 = (_a11 = tutorialUi.visual).setPointerCapture) == null ? void 0 : _b2.call(_a11, event.pointerId);
+  (_b2 = (_a12 = tutorialUi.visual).setPointerCapture) == null ? void 0 : _b2.call(_a12, event.pointerId);
 });
 tutorialUi.visual.addEventListener("pointerup", (event) => {
   if (!tutorialPointerStart || tutorialPointerStart.id !== event.pointerId) return;
@@ -22532,7 +22538,19 @@ addEventListener("keydown", (event) => {
   if (event.key === "ArrowRight") tutorialStep === TUTORIAL_STEPS.length - 1 ? dismissTutorial() : setTutorialStep(tutorialStep + 1);
 });
 var scene = new Scene();
-if (platform.canvas) scene.background = new Color(5954532);
+var _a3;
+if (platform.canvas) {
+  scene.background = new Color(5954532);
+  (_a3 = platform.loadImage) == null ? void 0 : _a3.call(platform, "assets/sprout-arena-portrait.jpg").then((image) => {
+    const texture2 = new Texture(image);
+    texture2.colorSpace = NoColorSpace;
+    texture2.generateMipmaps = false;
+    texture2.minFilter = LinearFilter;
+    texture2.needsUpdate = true;
+    scene.background = texture2;
+  }).catch(() => {
+  });
+}
 scene.fog = new Fog(5954532, 34, 58);
 var camera = new PerspectiveCamera(43, innerWidth / innerHeight, 0.1, 100);
 var renderer = new WebGLRenderer({ canvas: platform.canvas, antialias: true, alpha: true, powerPreference: "high-performance" });
@@ -22610,8 +22628,8 @@ function setMaterialBaseColor(material, color) {
   material.color.copy(color);
 }
 function setMaterialGlow(material, color, intensity) {
-  var _a11;
-  if ((_a11 = material.emissive) == null ? void 0 : _a11.isColor) {
+  var _a12;
+  if ((_a12 = material.emissive) == null ? void 0 : _a12.isColor) {
     material.emissive.setHex(color);
     material.emissiveIntensity = intensity;
     return;
@@ -22621,8 +22639,8 @@ function setMaterialGlow(material, color, intensity) {
   refreshFallbackMaterial(material);
 }
 function setMaterialGlowIntensity(material, intensity) {
-  var _a11;
-  if ((_a11 = material.emissive) == null ? void 0 : _a11.isColor) {
+  var _a12;
+  if ((_a12 = material.emissive) == null ? void 0 : _a12.isColor) {
     material.emissiveIntensity = intensity;
     return;
   }
@@ -22862,10 +22880,11 @@ warningBeacon.add(warningGem, warningRing);
 warningBeacon.visible = false;
 scene.add(warningBeacon);
 var particleGeometry = new TetrahedronGeometry(0.16, 0);
+var BURST_PARTICLES_PER_TILE = platform.canvas ? 4 : 10;
 var particles = [];
 var shockwaves = [];
 function spawnBurst(tile) {
-  for (let i = 0; i < 10; i += 1) {
+  for (let i = 0; i < BURST_PARTICLES_PER_TILE; i += 1) {
     const particle = new Mesh(particleGeometry, lowPolyMaterial(COLORS[tile.userData.color], {
       transparent: true,
       opacity: 1
@@ -22992,9 +23011,20 @@ function cancelScheduled() {
   scheduledTimers.clear();
 }
 function ensureAudio() {
-  var _a11;
+  var _a12;
   const AudioContextClass = window2.AudioContext || window2.webkitAudioContext;
-  (_a11 = state.audio) != null ? _a11 : state.audio = new AudioContextClass();
+  if (!AudioContextClass) {
+    state.sound = false;
+    state.mixAudioStatus = "unavailable";
+    return null;
+  }
+  try {
+    (_a12 = state.audio) != null ? _a12 : state.audio = new AudioContextClass();
+  } catch (e) {
+    state.sound = false;
+    state.mixAudioStatus = "unavailable";
+    return null;
+  }
   if (!state.audioOutput) {
     const compressor = state.audio.createDynamicsCompressor();
     compressor.threshold.value = -17;
@@ -23049,15 +23079,16 @@ function loadMixAudio(context2) {
   return state.mixAudioLoad;
 }
 function playMixCue(name, { delay = 0, playbackRate = 1 } = {}) {
-  var _a11, _b2;
+  var _a12, _b2;
   const buffer = state.mixAudioBuffers[name];
   if (!state.sound || !buffer) return false;
   const context2 = ensureAudio();
+  if (!context2) return false;
   const source = context2.createBufferSource();
   const gain = context2.createGain();
   source.buffer = buffer;
   source.playbackRate.value = playbackRate;
-  gain.gain.value = (_a11 = MIX_CUE_GAINS[name]) != null ? _a11 : 0.42;
+  gain.gain.value = (_a12 = MIX_CUE_GAINS[name]) != null ? _a12 : 0.42;
   source.connect(gain).connect((_b2 = state.sfxBus) != null ? _b2 : state.audioOutput);
   state.activeMixSources.add(source);
   source.onended = () => {
@@ -23100,8 +23131,8 @@ function startSampledMusic() {
   return true;
 }
 function syncAudioState() {
-  var _a11, _b2;
-  document2.documentElement.dataset.audioState = (_b2 = (_a11 = state.audio) == null ? void 0 : _a11.state) != null ? _b2 : "not-started";
+  var _a12, _b2;
+  document2.documentElement.dataset.audioState = (_b2 = (_a12 = state.audio) == null ? void 0 : _a12.state) != null ? _b2 : "not-started";
   document2.documentElement.dataset.musicStyle = "bouncy-party-loop";
   document2.documentElement.dataset.musicPulse = "128bpm-eighth-note";
   document2.documentElement.dataset.audioMix = "bouncy-party-hop-v92";
@@ -23120,8 +23151,9 @@ function syncAudioState() {
   if (soundIcon) soundIcon.src = state.sound ? "assets/ui-sound-on.png" : "assets/ui-sound-off.png";
 }
 function voice({ from, to, duration, volume, delay = 0, type = "sine", peak = null, at = null, destination = null, attack = 0.012 }) {
-  var _a11;
+  var _a12;
   const context2 = ensureAudio();
+  if (!context2) return;
   const start = at != null ? at : context2.currentTime + delay;
   const end = start + duration;
   const oscillator = context2.createOscillator();
@@ -23135,7 +23167,7 @@ function voice({ from, to, duration, volume, delay = 0, type = "sine", peak = nu
   gain.gain.setValueAtTime(1e-4, start);
   gain.gain.exponentialRampToValueAtTime(volume, start + Math.min(attack, duration * 0.62));
   gain.gain.exponentialRampToValueAtTime(1e-4, end);
-  oscillator.connect(gain).connect((_a11 = destination != null ? destination : state.sfxBus) != null ? _a11 : state.audioOutput);
+  oscillator.connect(gain).connect((_a12 = destination != null ? destination : state.sfxBus) != null ? _a12 : state.audioOutput);
   oscillator.start(start);
   oscillator.stop(end + 0.02);
 }
@@ -23151,8 +23183,9 @@ function ensureNoiseBuffer(context2) {
   return state.noiseBuffer;
 }
 function noisePuff(duration = 0.12, volume = 0.018, frequency = 900, delay = 0) {
-  var _a11;
+  var _a12;
   const context2 = ensureAudio();
+  if (!context2) return;
   ensureNoiseBuffer(context2);
   const start = context2.currentTime + delay;
   const source = context2.createBufferSource();
@@ -23166,12 +23199,13 @@ function noisePuff(duration = 0.12, volume = 0.018, frequency = 900, delay = 0) 
   gain.gain.setValueAtTime(1e-4, start);
   gain.gain.exponentialRampToValueAtTime(volume, start + 8e-3);
   gain.gain.exponentialRampToValueAtTime(1e-4, start + duration);
-  source.connect(filter).connect(gain).connect((_a11 = state.sfxBus) != null ? _a11 : state.audioOutput);
+  source.connect(filter).connect(gain).connect((_a12 = state.sfxBus) != null ? _a12 : state.audioOutput);
   source.start(start, Math.random() * 0.16, duration);
 }
 function noiseSnap(duration = 0.065, volume = 0.012, frequency = 4300, delay = 0) {
-  var _a11;
+  var _a12;
   const context2 = ensureAudio();
+  if (!context2) return;
   ensureNoiseBuffer(context2);
   const start = context2.currentTime + delay;
   const source = context2.createBufferSource();
@@ -23185,7 +23219,7 @@ function noiseSnap(duration = 0.065, volume = 0.012, frequency = 4300, delay = 0
   gain.gain.setValueAtTime(1e-4, start);
   gain.gain.exponentialRampToValueAtTime(volume, start + 25e-4);
   gain.gain.exponentialRampToValueAtTime(1e-4, start + duration);
-  source.connect(filter).connect(gain).connect((_a11 = state.sfxBus) != null ? _a11 : state.audioOutput);
+  source.connect(filter).connect(gain).connect((_a12 = state.sfxBus) != null ? _a12 : state.audioOutput);
   source.start(start, Math.random() * 0.18, duration);
 }
 function playHopBeat() {
@@ -23194,7 +23228,7 @@ function playHopBeat() {
   noisePuff(0.038, 18e-4, 680);
 }
 function sfx(name, detail = {}) {
-  var _a11, _b2, _c, _d, _e, _f, _g, _h, _i;
+  var _a12, _b2, _c, _d, _e, _f, _g, _h, _i;
   if (!state.sound) return;
   state.audioEvents.push({ name, at: Math.round(performance2.now()), ...detail });
   if (state.audioEvents.length > 32) state.audioEvents.shift();
@@ -23208,7 +23242,7 @@ function sfx(name, detail = {}) {
   } else if (name === "collect") {
     [760, 1050, 1480].forEach((note, index) => voice({ from: note, to: note * 1.08, duration: 0.13, volume: 0.025 - index * 3e-3, delay: index * 0.048, type: index === 1 ? "triangle" : "sine" }));
   } else if (name === "ignite" || name === "warn") {
-    const pitch = 1 + ((_a11 = detail.chain) != null ? _a11 : 0) * 0.075;
+    const pitch = 1 + ((_a12 = detail.chain) != null ? _a12 : 0) * 0.075;
     voice({ from: 560 * pitch, peak: 1080 * pitch, to: 760 * pitch, duration: 0.15, volume: 0.034, type: "sine" });
     voice({ from: 1140 * pitch, to: 820 * pitch, duration: 0.105, volume: 0.016, delay: 0.032, type: "triangle" });
     noiseSnap(0.045, 6e-3, 5100 * pitch, 0.018);
@@ -23381,6 +23415,7 @@ function stopMusic() {
 }
 function startMusic() {
   const context2 = ensureAudio();
+  if (!context2 || !state.musicBus) return false;
   const gain = state.musicBus.gain;
   gain.cancelScheduledValues(context2.currentTime);
   gain.setValueAtTime(1e-4, context2.currentTime);
@@ -23389,6 +23424,7 @@ function startMusic() {
   state.musicNext = context2.currentTime + 0.08;
   startSampledMusic();
   syncAudioState();
+  return true;
 }
 function updateMusic() {
   if (!state.sound || !state.running || !state.audio) return;
@@ -23443,9 +23479,9 @@ function savePendingScores(entries) {
   }
 }
 function queuePendingScore(entry) {
-  var _a11;
+  var _a12;
   const entries = readPendingScores();
-  entries.push({ ...entry, userId: ((_a11 = cloudLeaderboard.user) == null ? void 0 : _a11.id) || null });
+  entries.push({ ...entry, userId: ((_a12 = cloudLeaderboard.user) == null ? void 0 : _a12.id) || null });
   savePendingScores(entries);
 }
 function setLeaderboardStatus(text2) {
@@ -23465,7 +23501,7 @@ function renderLeaderboard(entries, { cloud: cloud2 = false } = {}) {
     return;
   }
   ui.leaderboard.replaceChildren(...visibleEntries.map((entry, index) => {
-    var _a11;
+    var _a12;
     const item = document2.createElement("li");
     const rank = document2.createElement("span");
     const player2 = document2.createElement("strong");
@@ -23473,7 +23509,7 @@ function renderLeaderboard(entries, { cloud: cloud2 = false } = {}) {
     rank.textContent = `#${index + 1}`;
     player2.textContent = `${entry.displayName || "\u672C\u673A\u73A9\u5BB6"} \xB7 \u7B2C${entry.level}\u5C42`;
     score.textContent = `${Math.max(0, Math.floor(entry.score))} \u5206`;
-    if (cloud2 && entry.userId && entry.userId === ((_a11 = cloudLeaderboard.user) == null ? void 0 : _a11.id)) item.classList.add("is-player");
+    if (cloud2 && entry.userId && entry.userId === ((_a12 = cloudLeaderboard.user) == null ? void 0 : _a12.id)) item.classList.add("is-player");
     item.append(rank, player2, score);
     return item;
   }));
@@ -23556,10 +23592,10 @@ function setAccountStatus(text2, isError = false) {
   ui.accountStatus.classList.toggle("is-error", isError);
 }
 function setAccountMode(mode) {
-  var _a11, _b2;
+  var _a12, _b2;
   accountMode = mode === "sign-up" ? "sign-up" : "sign-in";
   const signingUp = accountMode === "sign-up";
-  (_a11 = ui.accountSignInMode) == null ? void 0 : _a11.setAttribute("aria-selected", String(!signingUp));
+  (_a12 = ui.accountSignInMode) == null ? void 0 : _a12.setAttribute("aria-selected", String(!signingUp));
   (_b2 = ui.accountSignUpMode) == null ? void 0 : _b2.setAttribute("aria-selected", String(signingUp));
   if (ui.displayNameField) ui.displayNameField.hidden = !signingUp;
   if (ui.accountDisplayName) ui.accountDisplayName.required = signingUp;
@@ -23568,7 +23604,7 @@ function setAccountMode(mode) {
   setAccountStatus("");
 }
 function updateAccountUi() {
-  var _a11;
+  var _a12;
   const enabled = cloudLeaderboard.enabled;
   document2.querySelectorAll(".cloud-only").forEach((element) => {
     element.hidden = !enabled;
@@ -23582,24 +23618,24 @@ function updateAccountUi() {
   if (ui.accountSignedOut) ui.accountSignedOut.hidden = signedIn;
   if (ui.accountSignedIn) ui.accountSignedIn.hidden = !signedIn;
   if (ui.accountPlayerName) ui.accountPlayerName.textContent = name;
-  if (ui.accountPlayerEmail) ui.accountPlayerEmail.textContent = ((_a11 = cloudLeaderboard.user) == null ? void 0 : _a11.email) || "";
+  if (ui.accountPlayerEmail) ui.accountPlayerEmail.textContent = ((_a12 = cloudLeaderboard.user) == null ? void 0 : _a12.email) || "";
 }
 function openAccountDialog(event) {
-  var _a11;
+  var _a12;
   if (!cloudLeaderboard.enabled || !ui.accountDialog) return;
   lastAccountTrigger = (event == null ? void 0 : event.currentTarget) || document2.activeElement;
   updateAccountUi();
   setAccountStatus("");
   ui.accountDialog.hidden = false;
-  (_a11 = cloudLeaderboard.user ? ui.accountSignOut : ui.accountEmail) == null ? void 0 : _a11.focus({ preventScroll: true });
+  (_a12 = cloudLeaderboard.user ? ui.accountSignOut : ui.accountEmail) == null ? void 0 : _a12.focus({ preventScroll: true });
   if (cloudLeaderboard.user) void updateAccountBest().catch(() => {
   });
 }
 function closeAccountDialog() {
-  var _a11;
+  var _a12;
   if (!ui.accountDialog || ui.accountDialog.hidden) return;
   ui.accountDialog.hidden = true;
-  (_a11 = lastAccountTrigger == null ? void 0 : lastAccountTrigger.focus) == null ? void 0 : _a11.call(lastAccountTrigger, { preventScroll: true });
+  (_a12 = lastAccountTrigger == null ? void 0 : lastAccountTrigger.focus) == null ? void 0 : _a12.call(lastAccountTrigger, { preventScroll: true });
 }
 async function initializeCloudLeaderboard() {
   renderLeaderboard(readLeaderboard());
@@ -23684,7 +23720,7 @@ function takeNextColor() {
   return color;
 }
 function refreshHud() {
-  var _a11, _b2;
+  var _a12, _b2;
   ui.level.textContent = state.level + 1;
   ui.score.textContent = state.score.toString().padStart(6, "0");
   ui.timer.textContent = Math.max(0, Math.ceil(state.time));
@@ -23719,7 +23755,7 @@ function refreshHud() {
     locked: state.locked,
     pendingLevelComplete: state.pendingLevelComplete,
     sound: state.sound,
-    audioState: (_b2 = (_a11 = state.audio) == null ? void 0 : _a11.state) != null ? _b2 : "not-started",
+    audioState: (_b2 = (_a12 = state.audio) == null ? void 0 : _a12.state) != null ? _b2 : "not-started",
     musicStyle: "bouncy-party-loop",
     musicPulse: "128bpm-eighth-note",
     audioMix: "bouncy-party-hop-v92",
@@ -23889,8 +23925,8 @@ function startLevel(index, { silent = false } = {}) {
 function reset() {
   cancelScheduled();
   stopMixCues();
-  ensureAudio();
-  if (state.sound) startMusic();
+  const audio = ensureAudio();
+  if (state.sound && audio) startMusic();
   state.running = true;
   state.paused = false;
   state.over = false;
@@ -23973,12 +24009,12 @@ function hopTo(rowDelta, colDelta, silentStart = false) {
   return true;
 }
 function requestMove(rowDelta, colDelta, haptic = false, silentStart = false) {
-  var _a11, _b2;
+  var _a12, _b2;
   if (!state.running || state.paused || state.locked || state.falling) return false;
   if (state.hop || !state.grounded || !state.currentTile) {
     if (state.hop) {
       state.queuedMove = [rowDelta, colDelta];
-      if (haptic) (_a11 = navigator2.vibrate) == null ? void 0 : _a11.call(navigator2, 8);
+      if (haptic) (_a12 = navigator2.vibrate) == null ? void 0 : _a12.call(navigator2, 8);
       return true;
     }
     return false;
@@ -24272,11 +24308,11 @@ function moveForSwipe(deltaX, deltaY) {
   return best.move;
 }
 renderer.domElement.addEventListener("pointerdown", (event) => {
-  var _a11, _b2;
+  var _a12, _b2;
   const swipeEnabled = event.pointerType === "touch" || innerWidth < 760;
   pointerStart = { x: event.clientX, y: event.clientY, id: event.pointerId, swipeEnabled, moved: false, move: null, nextMoveAt: 0 };
   if (swipeEnabled) {
-    (_b2 = (_a11 = renderer.domElement).setPointerCapture) == null ? void 0 : _b2.call(_a11, event.pointerId);
+    (_b2 = (_a12 = renderer.domElement).setPointerCapture) == null ? void 0 : _b2.call(_a12, event.pointerId);
     updateSwipePad(event.clientX, event.clientY);
     swipePad.classList.add("show");
   }
@@ -24615,8 +24651,8 @@ function updateShockwaves(delta) {
   }
 }
 function updateWarningBeacon(elapsed) {
-  var _a11;
-  const danger = state.grounded && ((_a11 = state.currentTile) == null ? void 0 : _a11.userData.state) === "warn";
+  var _a12;
+  const danger = state.grounded && ((_a12 = state.currentTile) == null ? void 0 : _a12.userData.state) === "warn";
   warningBeacon.visible = Boolean(danger);
   if (!danger) return;
   warningBeacon.position.set(player.position.x, player.position.y + 2.2 + Math.sin(elapsed * 8) * 0.08, player.position.z);
@@ -24624,9 +24660,9 @@ function updateWarningBeacon(elapsed) {
   warningRing.scale.setScalar(1 + Math.sin(elapsed * 8) * 0.08);
 }
 function beginLevelTransitionWhenSafe() {
-  var _a11;
+  var _a12;
   if (!state.pendingLevelComplete || state.transitionTimer > 0 || state.levelResultOpen || state.over) return;
-  const currentState = (_a11 = state.currentTile) == null ? void 0 : _a11.userData.state;
+  const currentState = (_a12 = state.currentTile) == null ? void 0 : _a12.userData.state;
   const playerInDanger = currentState === "warn" || currentState === "bursting";
   if (playerInDanger || state.hop || state.falling || !state.grounded) return;
   state.pendingLevelComplete = false;
@@ -24636,7 +24672,7 @@ function beginLevelTransitionWhenSafe() {
   sfx("levelClear");
 }
 function update(delta, elapsed) {
-  var _a11, _b2;
+  var _a12, _b2;
   if (state.paused) return;
   if (state.hitStop > 0) {
     state.hitStop = Math.max(0, state.hitStop - delta);
@@ -24680,7 +24716,7 @@ function update(delta, elapsed) {
   }
   updateParticles(delta);
   updateShockwaves(delta);
-  const shadowY = (_b2 = (_a11 = state.currentTile) == null ? void 0 : _a11.position.y) != null ? _b2 : -0.45;
+  const shadowY = (_b2 = (_a12 = state.currentTile) == null ? void 0 : _a12.position.y) != null ? _b2 : -0.45;
   playerShadow.position.set(player.position.x, shadowY + 0.43, player.position.z);
   playerShadow.material.opacity = state.falling ? 0 : Math.max(0.05, 0.28 - Math.max(0, player.position.y - shadowY) * 0.045);
 }
@@ -24707,32 +24743,32 @@ function updateCamera(delta) {
 }
 var clock = new Clock();
 function loop() {
-  var _a11;
+  var _a12;
   requestAnimationFrame(loop);
   const delta = Math.min(clock.getDelta(), 0.034);
   const elapsed = clock.elapsedTime;
   update(delta, elapsed);
   updateCamera(delta);
   renderer.render(scene, camera);
-  (_a11 = globalThis.__happyJumpAfterRender) == null ? void 0 : _a11.call(globalThis, { renderer, scene, camera, state, levels: LEVELS });
+  (_a12 = globalThis.__happyJumpAfterRender) == null ? void 0 : _a12.call(globalThis, { renderer, scene, camera, state, levels: LEVELS });
 }
 loop();
-var _a3;
-(_a3 = ui.introAccount) == null ? void 0 : _a3.addEventListener("click", openAccountDialog);
 var _a4;
-(_a4 = ui.resultAccount) == null ? void 0 : _a4.addEventListener("click", openAccountDialog);
+(_a4 = ui.introAccount) == null ? void 0 : _a4.addEventListener("click", openAccountDialog);
 var _a5;
-(_a5 = ui.accountClose) == null ? void 0 : _a5.addEventListener("click", closeAccountDialog);
+(_a5 = ui.resultAccount) == null ? void 0 : _a5.addEventListener("click", openAccountDialog);
 var _a6;
-(_a6 = ui.accountSignInMode) == null ? void 0 : _a6.addEventListener("click", () => setAccountMode("sign-in"));
+(_a6 = ui.accountClose) == null ? void 0 : _a6.addEventListener("click", closeAccountDialog);
 var _a7;
-(_a7 = ui.accountSignUpMode) == null ? void 0 : _a7.addEventListener("click", () => setAccountMode("sign-up"));
+(_a7 = ui.accountSignInMode) == null ? void 0 : _a7.addEventListener("click", () => setAccountMode("sign-in"));
 var _a8;
-(_a8 = ui.accountDialog) == null ? void 0 : _a8.addEventListener("click", (event) => {
+(_a8 = ui.accountSignUpMode) == null ? void 0 : _a8.addEventListener("click", () => setAccountMode("sign-up"));
+var _a9;
+(_a9 = ui.accountDialog) == null ? void 0 : _a9.addEventListener("click", (event) => {
   if (event.target === ui.accountDialog) closeAccountDialog();
 });
-var _a9;
-(_a9 = ui.accountForm) == null ? void 0 : _a9.addEventListener("submit", async (event) => {
+var _a10;
+(_a10 = ui.accountForm) == null ? void 0 : _a10.addEventListener("submit", async (event) => {
   event.preventDefault();
   ui.accountSubmit.disabled = true;
   setAccountStatus(accountMode === "sign-up" ? "\u6B63\u5728\u521B\u5EFA\u8D26\u53F7\u2026" : "\u6B63\u5728\u767B\u5F55\u2026");
@@ -24761,8 +24797,8 @@ var _a9;
     ui.accountSubmit.disabled = false;
   }
 });
-var _a10;
-(_a10 = ui.accountSignOut) == null ? void 0 : _a10.addEventListener("click", async () => {
+var _a11;
+(_a11 = ui.accountSignOut) == null ? void 0 : _a11.addEventListener("click", async () => {
   setAccountStatus("\u6B63\u5728\u9000\u51FA\u2026");
   try {
     await cloudLeaderboard.signOut();
@@ -24783,9 +24819,11 @@ $("#levelContinue").addEventListener("click", continueFromLevelResult);
 $("#sound").addEventListener("click", (event) => {
   state.sound = !state.sound;
   if (state.sound) {
-    ensureAudio();
-    if (state.running) startMusic();
-    sfx("toggle");
+    const audio = ensureAudio();
+    if (audio) {
+      if (state.running) startMusic();
+      sfx("toggle");
+    }
   } else {
     stopMixCues();
     stopMusic();
@@ -24793,8 +24831,8 @@ $("#sound").addEventListener("click", (event) => {
   syncAudioState();
 });
 addEventListener("pointerdown", () => {
-  var _a11;
-  if (state.sound && ((_a11 = state.audio) == null ? void 0 : _a11.state) === "suspended") state.audio.resume();
+  var _a12;
+  if (state.sound && ((_a12 = state.audio) == null ? void 0 : _a12.state) === "suspended") state.audio.resume();
 }, { passive: true });
 addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
@@ -24804,7 +24842,7 @@ addEventListener("resize", () => {
 window2.__bounceGrid = {
   roundsForTileCount,
   getState: () => {
-    var _a11, _b2;
+    var _a12, _b2;
     return {
       running: state.running,
       over: state.over,
@@ -24839,7 +24877,7 @@ window2.__bounceGrid = {
       levelBestChain: state.levelBestChain,
       sound: state.sound,
       inputMode: innerWidth <= 900 ? "swipe" : "keyboard-click-or-swipe",
-      audioState: (_b2 = (_a11 = state.audio) == null ? void 0 : _a11.state) != null ? _b2 : "not-started",
+      audioState: (_b2 = (_a12 = state.audio) == null ? void 0 : _a12.state) != null ? _b2 : "not-started",
       musicStyle: "bouncy-party-loop",
       musicPulse: "128bpm-eighth-note",
       audioMix: "bouncy-party-hop-v92",
@@ -24881,6 +24919,15 @@ uiCanvas.height = Math.max(1, Math.floor(height * ratio));
 var context = uiCanvas.getContext("2d");
 context.scale(ratio, ratio);
 var COLORS2 = ["#f69d46", "#f6d14e", "#7acd5a", "#42b4df", "#c982d7", "#f06b70"];
+var THEME = Object.freeze({
+  paper: "#f5f1e7",
+  ink: "#4d4a45",
+  muted: "#79756e",
+  aqua: "#53a895",
+  aquaDark: "#397f70",
+  warm: "#e4ce8b",
+  alert: "#c97762"
+});
 var LOCAL_BEST_KEY = "happy-jump-wechat-local-best-v2";
 var art = {};
 var buttons = {};
@@ -24917,6 +24964,7 @@ loadArt("logo", "assets/happy-jump-logo.png");
 loadArt("forward", "assets/ui-forward.png");
 loadArt("soundOn", "assets/ui-sound-on.png");
 loadArt("soundOff", "assets/ui-sound-off.png");
+loadArt("paper", "assets/sprout-ui-paper.jpg");
 function roundRect(ctx, x, y, w, h, radius = 8) {
   const r = Math.min(radius, w / 2, h / 2);
   ctx.beginPath();
@@ -24938,6 +24986,16 @@ function strokeRect(x, y, w, h, color, radius = 8, lineWidth = 1) {
   roundRect(context, x, y, w, h, radius);
   context.stroke();
 }
+function panel(x, y, w, h, color = "rgba(245,241,231,0.96)", radius = 8) {
+  fillRect(x, y, w, h, color, radius);
+  if (!art.paper) return;
+  context.save();
+  roundRect(context, x, y, w, h, radius);
+  context.clip();
+  context.globalAlpha = 0.12;
+  context.drawImage(art.paper, x, y, w, h);
+  context.restore();
+}
 function text(value, x, y, size, color = "#173b52", align = "left", weight = "400") {
   context.save();
   context.fillStyle = color;
@@ -24948,11 +25006,11 @@ function text(value, x, y, size, color = "#173b52", align = "left", weight = "40
   context.restore();
 }
 function button(name, label, x, y, w, h, primary = false, icon = null) {
-  fillRect(x, y, w, h, primary ? "#ef676d" : "#e3f2ec");
-  strokeRect(x, y, w, h, primary ? "#d94e59" : "#bcded2");
+  fillRect(x, y, w, h, primary ? THEME.aqua : "rgba(245,241,231,0.96)", h / 2);
+  strokeRect(x, y, w, h, primary ? THEME.aquaDark : "#b8d6cd", h / 2);
   const iconSize = icon ? Math.min(24, h * 0.46) : 0;
   const center = x + w / 2 - iconSize * 0.22;
-  text(label, center, y + h / 2 + 1, primary ? 18 : 15, primary ? "#ffffff" : "#245f54", "center", "700");
+  text(label, center, y + h / 2 + 1, primary ? 18 : 15, primary ? "#fffdf8" : THEME.ink, "center", "700");
   if (icon) context.drawImage(icon, center + Math.min(76, w * 0.23), y + (h - iconSize) / 2, iconSize, iconSize);
   buttons[name] = { x, y, w, h };
 }
@@ -24969,6 +25027,7 @@ function drawBrand(y = 44) {
   text("HAPPY JUMP", width / 2, y + 22, Math.min(34, width * 0.09), "#ffffff", "center", "700");
 }
 function screenForState(state2 = latestState) {
+  if (document3.querySelector("#tutorial").classList.contains("show")) return "tutorial";
   if (manualScreen) return manualScreen;
   if (!state2) return "home";
   if (state2.over) return "result";
@@ -24990,38 +25049,38 @@ function drawHome() {
   const w = width - 32;
   const h = Math.min(286, Math.max(250, height * 0.34));
   const y = height - h - 18;
-  fillRect(x, y, w, h, "rgba(255,253,247,0.97)");
-  text(leaderboardState.player.displayName || "\u5FAE\u4FE1\u73A9\u5BB6", x + 20, y + 28, 17, "#173b52", "left", "700");
-  text(leaderboardState.status, x + 20, y + 51, 11, "#58746f");
+  panel(x, y, w, h, "rgba(245,241,231,0.97)", 26);
+  text(leaderboardState.player.displayName || "\u5FAE\u4FE1\u73A9\u5BB6", x + 20, y + 28, 17, THEME.ink, "left", "700");
+  text(leaderboardState.status, x + 20, y + 51, 11, THEME.muted);
   context.strokeStyle = "#d7ebe4";
   context.beginPath();
   context.moveTo(x + 20, y + 67);
   context.lineTo(x + w - 20, y + 67);
   context.stroke();
-  text("\u5386\u53F2\u6700\u4F73", x + 20, y + 87, 11, "#6b837f");
-  text(leaderboardState.player.bestScore || 0, x + 20, y + 116, 26, "#173b52", "left", "700");
-  text("\u6211\u7684\u6392\u540D", x + w / 2 + 8, y + 87, 11, "#6b837f");
-  text(leaderboardState.rank ? `\u7B2C ${leaderboardState.rank} \u540D` : "\u6682\u65E0", x + w / 2 + 8, y + 116, 21, "#237063", "left", "700");
+  text("\u5386\u53F2\u6700\u4F73", x + 20, y + 87, 11, THEME.muted);
+  text(leaderboardState.player.bestScore || 0, x + 20, y + 116, 26, THEME.ink, "left", "700");
+  text("\u6211\u7684\u6392\u540D", x + w / 2 + 8, y + 87, 11, THEME.muted);
+  text(leaderboardState.rank ? `\u7B2C ${leaderboardState.rank} \u540D` : "\u6682\u65E0", x + w / 2 + 8, y + 116, 21, THEME.aquaDark, "left", "700");
   button("start", "\u5F00\u59CB\u6311\u6218", x + 18, y + h - 105, w - 36, 49, true, art.forward);
   button("leaderboard", "\u5168\u7403\u6392\u884C\u699C", x + 18, y + h - 46, w - 36, 34, false);
   syncProfileButton(x + w - 150, y + 14, 132, 28);
 }
 function drawHud(state2, levels) {
-  var _a11, _b2, _c;
-  const top = Math.max(10, Number(((_b2 = (_a11 = wxApi2.getMenuButtonBoundingClientRect) == null ? void 0 : _a11.call(wxApi2)) == null ? void 0 : _b2.bottom) || 0) + 5);
+  var _a12, _b2, _c;
+  const top = Math.max(10, Number(((_b2 = (_a12 = wxApi2.getMenuButtonBoundingClientRect) == null ? void 0 : _a12.call(wxApi2)) == null ? void 0 : _b2.bottom) || 0) + 5);
   const x = 10;
   const w = width - 20;
-  fillRect(x, top, w, 82, "rgba(255,253,247,0.92)");
+  panel(x, top, w, 82, "rgba(245,241,231,0.92)", 24);
   const positions = [x + w * 0.12, x + w * 0.37, x + w * 0.63, x + w * 0.85];
   const labels = ["\u5C42\u6570", "\u5206\u6570", "\u7206\u7834\u56DE\u5408", "\u65F6\u95F4"];
   const values = [`${state2.level}/${state2.levels}`, state2.score, `${state2.rounds}/${state2.roundGoal}`, Math.max(0, Math.ceil(state2.time))];
   positions.forEach((position, index) => {
-    text(labels[index], position, top + 19, 10, "#67807c", "center");
-    text(values[index], position, top + 44, index === 1 ? 16 : 17, index === 3 && state2.time <= 10 ? "#c73f4b" : "#173b52", "center", "700");
+    text(labels[index], position, top + 19, 10, THEME.muted, "center");
+    text(values[index], position, top + 44, index === 1 ? 16 : 17, index === 3 && state2.time <= 10 ? THEME.alert : THEME.ink, "center", "700");
   });
   text(((_c = levels[state2.level - 1]) == null ? void 0 : _c.name) || `\u7B2C ${state2.level} \u5C42`, x + 16, top + 67, 11, "#2d7466", "left", "700");
   for (let life = 0; life < 3; life += 1) {
-    context.fillStyle = life < state2.lives ? "#ef676d" : "#d7dfdc";
+    context.fillStyle = life < state2.lives ? THEME.alert : "#d7dfdc";
     context.beginPath();
     context.arc(x + w - 68 + life * 17, top + 67, 5, 0, Math.PI * 2);
     context.fill();
@@ -25030,7 +25089,7 @@ function drawHud(state2, levels) {
   queue.slice(0, 4).forEach((color, index) => fillRect(x + 16 + index * 17, top + 58, 11, 11, COLORS2[color] || "#ffffff", 3));
   const soundX = width - 49;
   const soundY = top + 91;
-  fillRect(soundX, soundY, 39, 39, "rgba(255,253,247,0.9)");
+  panel(soundX, soundY, 39, 39, "rgba(245,241,231,0.92)", 20);
   const soundArt = state2.sound ? art.soundOn : art.soundOff;
   if (soundArt) context.drawImage(soundArt, soundX + 8, soundY + 8, 23, 23);
   else text(state2.sound ? "\u266A" : "\xD7", soundX + 19.5, soundY + 20, 21, "#245f54", "center", "700");
@@ -25052,23 +25111,23 @@ function modalBase() {
   const x = 22;
   const h = Math.min(404, height - 120);
   const y = (height - h) / 2;
-  fillRect(x, y, w, h, "rgba(255,253,247,0.98)");
+  panel(x, y, w, h, "rgba(245,241,231,0.98)", 30);
   return { x, y, w, h };
 }
 function drawLevelResult(state2, levels) {
-  var _a11;
+  var _a12;
   drawHud(state2, levels);
   const { x, y, w, h } = modalBase();
   const final = state2.level === state2.levels;
   text(final ? "\u5168\u90E8\u5173\u5361\u5B8C\u6210" : "\u672C\u5173\u5B8C\u6210", width / 2, y + 38, 12, "#2d7466", "center", "700");
-  text(`\u7B2C ${state2.level} \u5C42\u5B8C\u6210`, width / 2, y + 76, 27, "#173b52", "center", "700");
+  text(`\u7B2C ${state2.level} \u5C42\u5B8C\u6210`, width / 2, y + 76, 27, THEME.ink, "center", "700");
   const values = [Math.max(0, state2.score), state2.levelTilesExploded, `${state2.rounds}/${state2.roundGoal}`];
   ["\u603B\u5206", "\u7206\u7834\u683C\u6570", "\u5B8C\u6210\u56DE\u5408"].forEach((label, index) => {
     const column = x + w * (0.18 + index * 0.32);
-    text(label, column, y + 132, 11, "#718783", "center");
-    text(values[index], column, y + 161, 20, "#215f55", "center", "700");
+    text(label, column, y + 132, 11, THEME.muted, "center");
+    text(values[index], column, y + 161, 20, THEME.aquaDark, "center", "700");
   });
-  text(final ? "\u516B\u5C42\u6311\u6218\u5DF2\u7ECF\u5B8C\u6210" : ((_a11 = levels[state2.level]) == null ? void 0 : _a11.name) || "\u4E0B\u4E00\u5C42", width / 2, y + 215, 15, "#58746f", "center");
+  text(final ? "\u516B\u5C42\u6311\u6218\u5DF2\u7ECF\u5B8C\u6210" : ((_a12 = levels[state2.level]) == null ? void 0 : _a12.name) || "\u4E0B\u4E00\u5C42", width / 2, y + 215, 15, "#58746f", "center");
   button("continue", final ? "\u67E5\u770B\u603B\u6210\u7EE9" : "\u8FDB\u5165\u4E0B\u4E00\u5C42", x + 22, y + h - 72, w - 44, 50, true);
   hideProfileButton();
 }
@@ -25076,11 +25135,11 @@ function drawResult(state2) {
   const { x, y, w, h } = modalBase();
   const won = document3.querySelector("#resultTag").textContent === "\u5168\u90E8\u901A\u5173";
   text(won ? "\u516B\u5C42\u901A\u5173" : "\u6311\u6218\u7ED3\u675F", width / 2, y + 44, 13, "#2d7466", "center", "700");
-  text(document3.querySelector("#resultTitle").textContent || (won ? "\u65B9\u9635\u5927\u5E08" : "\u518D\u63A5\u518D\u5389"), width / 2, y + 82, 28, "#173b52", "center", "700");
-  text(state2.score, width / 2, y + 142, 43, "#ef676d", "center", "700");
-  text("\u672C\u5C40\u5F97\u5206", width / 2, y + 177, 12, "#718783", "center");
-  text(`\u5386\u53F2\u6700\u4F73  ${leaderboardState.player.bestScore || state2.score}`, width / 2, y + 216, 16, "#236f60", "center", "700");
-  text(leaderboardState.rank ? `\u5168\u7403\u7B2C ${leaderboardState.rank} \u540D` : leaderboardState.status, width / 2, y + 244, 12, "#58746f", "center");
+  text(document3.querySelector("#resultTitle").textContent || (won ? "\u65B9\u9635\u5927\u5E08" : "\u518D\u63A5\u518D\u5389"), width / 2, y + 82, 28, THEME.ink, "center", "700");
+  text(state2.score, width / 2, y + 142, 43, THEME.aqua, "center", "700");
+  text("\u672C\u5C40\u5F97\u5206", width / 2, y + 177, 12, THEME.muted, "center");
+  text(`\u5386\u53F2\u6700\u4F73  ${leaderboardState.player.bestScore || state2.score}`, width / 2, y + 216, 16, THEME.aquaDark, "center", "700");
+  text(leaderboardState.rank ? `\u5168\u7403\u7B2C ${leaderboardState.rank} \u540D` : leaderboardState.status, width / 2, y + 244, 12, THEME.muted, "center");
   button("restart", "\u518D\u73A9\u4E00\u6B21", x + 22, y + h - 116, w - 44, 48, true);
   button("resultLeaderboard", "\u67E5\u770B\u6392\u884C\u699C", x + 22, y + h - 56, w - 44, 38, false);
   hideProfileButton();
@@ -25093,8 +25152,8 @@ function drawLeaderboard() {
   const y = 104;
   const w = width - 36;
   const h = height - 124;
-  fillRect(x, y, w, h, "rgba(255,253,247,0.98)");
-  text("\u5168\u7403\u6392\u884C\u699C", width / 2, y + 34, 22, "#173b52", "center", "700");
+  panel(x, y, w, h, "rgba(245,241,231,0.98)", 28);
+  text("\u5168\u7403\u6392\u884C\u699C", width / 2, y + 34, 22, THEME.ink, "center", "700");
   const maxRows = Math.max(3, Math.floor((h - 112) / 44));
   const entries = leaderboardState.entries.slice(0, maxRows);
   if (!entries.length) {
@@ -25105,11 +25164,91 @@ function drawLeaderboard() {
     const rowY = y + 76 + index * 44;
     if (index % 2 === 0) fillRect(x + 12, rowY - 18, w - 24, 38, "#edf7f3", 5);
     text(index + 1, x + 34, rowY, 14, index < 3 ? "#d8812e" : "#68817d", "center", "700");
-    text(entry.displayName || "\u5FAE\u4FE1\u73A9\u5BB6", x + 58, rowY, 13, "#173b52", "left", "700");
-    text(entry.bestScore || 0, x + w - 24, rowY, 15, "#236f60", "right", "700");
+    text(entry.displayName || "\u5FAE\u4FE1\u73A9\u5BB6", x + 58, rowY, 13, THEME.ink, "left", "700");
+    text(entry.bestScore || 0, x + w - 24, rowY, 15, THEME.aquaDark, "right", "700");
   });
   button("back", "\u8FD4\u56DE", x + 20, y + h - 50, w - 40, 36, false);
   hideProfileButton();
+}
+function drawTutorialVisual(step, centerY) {
+  if (step === 0) {
+    const size = Math.min(156, width * 0.42);
+    const x = width / 2;
+    panel(x - size / 2, centerY - size / 2, size, size, "rgba(245,241,231,0.9)", size / 2);
+    const directions = [
+      ["\u2191", x, centerY - size * 0.34],
+      ["\u2192", x + size * 0.34, centerY],
+      ["\u2193", x, centerY + size * 0.34],
+      ["\u2190", x - size * 0.34, centerY]
+    ];
+    directions.forEach(([label, cx, cy]) => {
+      fillRect(cx - 18, cy - 18, 36, 36, THEME.aqua, 18);
+      text(label, cx, cy, 23, "#fffdf8", "center", "700");
+    });
+    fillRect(x - 15, centerY - 15, 30, 30, THEME.alert, 15);
+    return;
+  }
+  const tile = Math.min(54, width * 0.14);
+  const gap = 7;
+  if (step === 1) {
+    const originX2 = width / 2 - (tile * 3 + gap * 2) / 2;
+    const originY2 = centerY - (tile * 2 + gap) / 2;
+    [[1, 0], [0, 1], [1, 1], [2, 1]].forEach(([col, row], index) => {
+      fillRect(originX2 + col * (tile + gap), originY2 + row * (tile + gap), tile, tile, COLORS2[5], 15);
+      strokeRect(originX2 + col * (tile + gap), originY2 + row * (tile + gap), tile, tile, index === 2 ? "#fff4b4" : "#d45c5f", 15, index === 2 ? 4 : 2);
+    });
+    return;
+  }
+  const originX = width / 2 - tile * 1.55;
+  const originY = centerY - tile - gap / 2;
+  [[0, 0], [1, 0], [0, 1], [1, 1]].forEach(([col, row]) => {
+    fillRect(originX + col * (tile + gap), originY + row * (tile + gap), tile, tile, "#ef7770", 15);
+    strokeRect(originX + col * (tile + gap), originY + row * (tile + gap), tile, tile, "#fff0a8", 15, 3);
+  });
+  text("\u2192", width / 2 + tile * 0.52, centerY, 34, "#fffdf8", "center", "700");
+  fillRect(width / 2 + tile, centerY - tile / 2, tile, tile, THEME.aqua, 15);
+}
+function drawTutorial(state2, levels) {
+  var _a12, _b2;
+  drawHud(state2, levels);
+  context.fillStyle = "rgba(29,77,78,0.28)";
+  context.fillRect(0, 0, width, height);
+  const tutorial = document3.querySelector("#tutorial");
+  const kicker = document3.querySelector("#tutorialKicker").textContent || "1 / 3";
+  const title = document3.querySelector("#tutorialTitle").textContent || "\u6ED1\u52A8\u8DF3\u8DC3";
+  const description = document3.querySelector("#tutorialText").textContent || "\u5411\u4E0A\u4E0B\u5DE6\u53F3\u6ED1\u52A8\uFF0C\u8BA9\u89D2\u8272\u8DF3\u5230\u76F8\u90BB\u65B9\u5757\u3002";
+  const step = Math.max(0, Math.min(2, Number(kicker.split("/")[0]) - 1 || 0));
+  const safeTop = Math.max(14, Number(((_b2 = (_a12 = wxApi2.getMenuButtonBoundingClientRect) == null ? void 0 : _a12.call(wxApi2)) == null ? void 0 : _b2.bottom) || 0) + 10);
+  const cardX = 14;
+  const cardW = width - 28;
+  const cardH = Math.min(192, height * 0.25);
+  const cardY = height - cardH - 14;
+  drawTutorialVisual(step, safeTop + Math.max(118, (cardY - safeTop) * 0.48));
+  panel(cardX, cardY, cardW, cardH, "rgba(245,241,231,0.98)", 26);
+  text(kicker, cardX + 20, cardY + 24, 11, THEME.aqua, "left", "700");
+  text(title, cardX + 20, cardY + 53, 23, THEME.ink, "left", "700");
+  text(description, cardX + 20, cardY + 82, width < 380 ? 12 : 13, THEME.muted, "left", "500");
+  const controlY = cardY + cardH - 38;
+  if (!document3.querySelector("#tutorialPrev").disabled) {
+    fillRect(cardX + 18, controlY - 21, 42, 42, THEME.aqua, 21);
+    text("\u2039", cardX + 39, controlY - 1, 30, "#fffdf8", "center", "700");
+    buttons.tutorialPrev = { x: cardX + 18, y: controlY - 21, w: 42, h: 42 };
+  }
+  [0, 1, 2].forEach((index) => {
+    context.fillStyle = index === step ? THEME.aqua : "rgba(77,74,69,0.18)";
+    context.beginPath();
+    context.arc(width / 2 + (index - 1) * 18, controlY, index === step ? 5 : 4, 0, Math.PI * 2);
+    context.fill();
+  });
+  fillRect(cardX + cardW - 60, controlY - 21, 42, 42, THEME.aqua, 21);
+  text(step === 2 ? "\u2713" : "\u203A", cardX + cardW - 39, controlY - 1, step === 2 ? 22 : 30, "#fffdf8", "center", "700");
+  buttons.tutorialNext = { x: cardX + cardW - 60, y: controlY - 21, w: 42, h: 42 };
+  const closeY = safeTop + 8;
+  fillRect(12, closeY, 38, 38, "rgba(245,241,231,0.94)", 19);
+  text("\xD7", 31, closeY + 18, 25, THEME.ink, "center", "500");
+  buttons.tutorialClose = { x: 12, y: closeY, w: 38, h: 38 };
+  hideProfileButton();
+  tutorial.hidden = false;
 }
 function draw(state2, levels) {
   Object.keys(buttons).forEach((key) => delete buttons[key]);
@@ -25117,10 +25256,11 @@ function draw(state2, levels) {
   const screen = screenForState(state2);
   if (screen === "home") drawHome();
   else if (screen === "game") drawHud(state2, levels);
+  else if (screen === "tutorial") drawTutorial(state2, levels);
   else if (screen === "levelResult") drawLevelResult(state2, levels);
   else if (screen === "result") drawResult(state2);
   else drawLeaderboard();
-  drawToast();
+  if (screen !== "tutorial") drawToast();
   texture.needsUpdate = true;
 }
 function ensureOverlay() {
@@ -25221,6 +25361,10 @@ function handleTap(point) {
   if (screen === "home") {
     if (inside(point, buttons.start)) clickDummy("start");
     else if (inside(point, buttons.leaderboard)) openLeaderboard("home");
+  } else if (screen === "tutorial") {
+    if (inside(point, buttons.tutorialPrev)) clickDummy("tutorialPrev");
+    else if (inside(point, buttons.tutorialNext)) clickDummy("tutorialNext");
+    else if (inside(point, buttons.tutorialClose)) clickDummy("tutorialClose");
   } else if (screen === "game" && inside(point, buttons.sound)) clickDummy("sound");
   else if (screen === "levelResult" && inside(point, buttons.continue)) clickDummy("levelContinue");
   else if (screen === "result") {
@@ -25233,9 +25377,9 @@ function handleTap(point) {
   }
 }
 function touchPoint(value) {
-  var _a11, _b2, _c, _d, _e, _f;
+  var _a12, _b2, _c, _d, _e, _f;
   if (!value) return null;
-  let x = Number((_c = (_b2 = (_a11 = value.clientX) != null ? _a11 : value.pageX) != null ? _b2 : value.x) != null ? _c : value.screenX);
+  let x = Number((_c = (_b2 = (_a12 = value.clientX) != null ? _a12 : value.pageX) != null ? _b2 : value.x) != null ? _c : value.screenX);
   let y = Number((_f = (_e = (_d = value.clientY) != null ? _d : value.pageY) != null ? _e : value.y) != null ? _f : value.screenY);
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
   if (x > width + 4 || y > height + 4) {
@@ -25250,8 +25394,8 @@ function pointerEvent(type, point) {
   } };
 }
 wxApi2.onTouchStart((event) => {
-  var _a11, _b2;
-  const point = touchPoint((_a11 = event.touches) == null ? void 0 : _a11[0]);
+  var _a12, _b2;
+  const point = touchPoint((_a12 = event.touches) == null ? void 0 : _a12[0]);
   if (!point) return;
   const screen = screenForState();
   const uiButton = Object.values(buttons).some((rect) => inside(point, rect));
@@ -25268,16 +25412,16 @@ wxApi2.onTouchStart((event) => {
   }
 });
 wxApi2.onTouchMove((event) => {
-  var _a11;
-  const point = touchPoint((_a11 = event.touches) == null ? void 0 : _a11[0]);
+  var _a12;
+  const point = touchPoint((_a12 = event.touches) == null ? void 0 : _a12[0]);
   if (!touch || !point) return;
   touch.last = point;
   if (touch.canvas) nativeCanvas.dispatchEvent(pointerEvent("pointermove", point));
 });
 wxApi2.onTouchEnd((event) => {
-  var _a11;
+  var _a12;
   if (!touch) return;
-  const point = touchPoint((_a11 = event.changedTouches) == null ? void 0 : _a11[0]) || touch.last;
+  const point = touchPoint((_a12 = event.changedTouches) == null ? void 0 : _a12[0]) || touch.last;
   const active = touch;
   touch = null;
   if (active.handled) return;
@@ -25303,6 +25447,7 @@ function renderWechatOverlay({ renderer: renderer2, state: state2, levels }) {
   if (state2.over && !previousOver) saveResult(state2);
   previousOver = state2.over;
   const toast = document3.querySelector("#toast");
+  const tutorial = document3.querySelector("#tutorial");
   const signature = JSON.stringify([
     screenForState(state2),
     state2.level,
@@ -25319,7 +25464,10 @@ function renderWechatOverlay({ renderer: renderer2, state: state2, levels }) {
     leaderboardState.status,
     leaderboardState.player.bestScore,
     leaderboardState.rank,
-    leaderboardState.entries.length
+    leaderboardState.entries.length,
+    tutorial.classList.contains("show"),
+    document3.querySelector("#tutorialKicker").textContent,
+    document3.querySelector("#tutorialTitle").textContent
   ]);
   const now2 = Date.now();
   if (signature !== lastSignature || now2 - lastDraw > 500) {

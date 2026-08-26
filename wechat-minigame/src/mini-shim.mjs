@@ -7,7 +7,9 @@ const info = wxApi?.getWindowInfo?.() || wxApi?.getSystemInfoSync?.() || {
 
 const width = Number(info.windowWidth || info.screenWidth || 375);
 const height = Number(info.windowHeight || info.screenHeight || 667);
-const ratio = Math.min(Number(info.pixelRatio || 1), 2);
+// 1.5x keeps text crisp while avoiding a 2x full-screen WebGL framebuffer on
+// older phones. The generated arena art is sized for this render budget.
+const ratio = Math.min(Number(info.pixelRatio || 1), 1.5);
 const nativeCanvas = wxApi?.createCanvas?.();
 const globalListeners = new Map();
 const canvasListeners = new Map();
@@ -179,5 +181,12 @@ globalThis.__happyJumpPlatform = {
   fetch: globalThis.fetch || fileFetch,
   URLSearchParams: globalThis.URLSearchParams || SearchParams
 };
+
+globalThis.__happyJumpPlatform.loadImage = (source) => new Promise((resolve, reject) => {
+  const image = wxApi.createImage();
+  image.onload = () => resolve(image);
+  image.onerror = reject;
+  image.src = source;
+});
 
 export { nativeCanvas, width, height, ratio };

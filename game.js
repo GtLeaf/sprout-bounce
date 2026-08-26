@@ -78,7 +78,7 @@ function rememberTutorial() {
 }
 
 function isMobileTutorialVisit() {
-  if (platform.canvas) return false;
+  if (platform.canvas) return true;
   if (TUTORIAL_QUERY === '1') return true;
   if (TUTORIAL_QUERY === '0') return false;
   return innerWidth <= 900 && (innerWidth <= 600 || navigator.maxTouchPoints > 0 || matchMedia('(pointer: coarse)').matches);
@@ -149,7 +149,19 @@ addEventListener('keydown', (event) => {
 });
 
 const scene = new THREE.Scene();
-if (platform.canvas) scene.background = new THREE.Color(0x5adbe4);
+if (platform.canvas) {
+  scene.background = new THREE.Color(0x5adbe4);
+  platform.loadImage?.('assets/sprout-arena-portrait.jpg').then((image) => {
+    const texture = new THREE.Texture(image);
+    // WeChat images are not DOM image elements, so avoid the browser-only
+    // color conversion path used by Three.js for sRGB textures.
+    texture.colorSpace = THREE.NoColorSpace;
+    texture.generateMipmaps = false;
+    texture.minFilter = THREE.LinearFilter;
+    texture.needsUpdate = true;
+    scene.background = texture;
+  }).catch(() => { /* The solid sky remains a safe offline fallback. */ });
+}
 scene.fog = new THREE.Fog(0x5adbe4, 34, 58);
 
 const camera = new THREE.PerspectiveCamera(43, innerWidth / innerHeight, 0.1, 100);
@@ -497,10 +509,11 @@ warningBeacon.visible = false;
 scene.add(warningBeacon);
 
 const particleGeometry = new THREE.TetrahedronGeometry(0.16, 0);
+const BURST_PARTICLES_PER_TILE = platform.canvas ? 4 : 10;
 const particles = [];
 const shockwaves = [];
 function spawnBurst(tile) {
-  for (let i = 0; i < 10; i += 1) {
+  for (let i = 0; i < BURST_PARTICLES_PER_TILE; i += 1) {
     const particle = new THREE.Mesh(particleGeometry, lowPolyMaterial(COLORS[tile.userData.color], {
       transparent: true,
       opacity: 1
@@ -635,7 +648,18 @@ function cancelScheduled() {
 
 function ensureAudio() {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-  state.audio ??= new AudioContextClass();
+  if (!AudioContextClass) {
+    state.sound = false;
+    state.mixAudioStatus = 'unavailable';
+    return null;
+  }
+  try {
+    state.audio ??= new AudioContextClass();
+  } catch {
+    state.sound = false;
+    state.mixAudioStatus = 'unavailable';
+    return null;
+  }
   if (!state.audioOutput) {
     const compressor = state.audio.createDynamicsCompressor();
     compressor.threshold.value = -17;
@@ -698,6 +722,7 @@ function playMixCue(name, { delay = 0, playbackRate = 1 } = {}) {
   const buffer = state.mixAudioBuffers[name];
   if (!state.sound || !buffer) return false;
   const context = ensureAudio();
+  if (!context) return false;
   const source = context.createBufferSource();
   const gain = context.createGain();
   source.buffer = buffer;
@@ -767,6 +792,7 @@ function syncAudioState() {
 
 function voice({ from, to, duration, volume, delay = 0, type = 'sine', peak = null, at = null, destination = null, attack = 0.012 }) {
   const context = ensureAudio();
+  if (!context) return;
   const start = at ?? context.currentTime + delay;
   const end = start + duration;
   const oscillator = context.createOscillator();
@@ -799,6 +825,7 @@ function ensureNoiseBuffer(context) {
 
 function noisePuff(duration = 0.12, volume = 0.018, frequency = 900, delay = 0) {
   const context = ensureAudio();
+  if (!context) return;
   ensureNoiseBuffer(context);
   const start = context.currentTime + delay;
   const source = context.createBufferSource();
@@ -818,6 +845,7 @@ function noisePuff(duration = 0.12, volume = 0.018, frequency = 900, delay = 0) 
 
 function noiseSnap(duration = 0.065, volume = 0.012, frequency = 4300, delay = 0) {
   const context = ensureAudio();
+  if (!context) return;
   ensureNoiseBuffer(context);
   const start = context.currentTime + delay;
   const source = context.createBufferSource();
@@ -1035,6 +1063,7 @@ function stopMusic() {
 
 function startMusic() {
   const context = ensureAudio();
+  if (!context || !state.musicBus) return false;
   const gain = state.musicBus.gain;
   gain.cancelScheduledValues(context.currentTime);
   gain.setValueAtTime(0.0001, context.currentTime);
@@ -1043,6 +1072,7 @@ function startMusic() {
   state.musicNext = context.currentTime + 0.08;
   startSampledMusic();
   syncAudioState();
+  return true;
 }
 
 function updateMusic() {
@@ -1569,8 +1599,8 @@ function startLevel(index, { silent = false } = {}) {
 function reset() {
   cancelScheduled();
   stopMixCues();
-  ensureAudio();
-  if (state.sound) startMusic();
+  const audio = ensureAudio();
+  if (state.sound && audio) startMusic();
   state.running = true;
   state.paused = false;
   state.over = false;
@@ -2511,9 +2541,11 @@ $('#levelContinue').addEventListener('click', continueFromLevelResult);
 $('#sound').addEventListener('click', (event) => {
   state.sound = !state.sound;
   if (state.sound) {
-    ensureAudio();
-    if (state.running) startMusic();
-    sfx('toggle');
+    const audio = ensureAudio();
+    if (audio) {
+      if (state.running) startMusic();
+      sfx('toggle');
+    }
   } else {
     stopMixCues();
     stopMusic();

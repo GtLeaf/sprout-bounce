@@ -27,6 +27,8 @@ test('the platform layer supplies WeChat canvas, storage, touch and lifecycle se
   assert.match(shim, /wxApi\?\.createCanvas\?\.\(\)/);
   assert.match(shim, /__happyJumpPlatform/);
   assert.match(shim, /getStorageSync/);
+  assert.match(shim, /Math\.min\(Number\(info\.pixelRatio \|\| 1\), 1\.5\)/);
+  assert.match(shim, /__happyJumpPlatform\.loadImage/);
   assert.match(ui, /new WechatLeaderboard\(wxApi, config\)/);
   assert.match(ui, /wxApi\.onTouchStart/);
   assert.match(ui, /wxApi\.onHide/);
@@ -37,15 +39,20 @@ test('the platform layer supplies WeChat canvas, storage, touch and lifecycle se
 test('the shared 3D game exposes its renderer hook and native scene background', async () => {
   const game = await source('game.js');
   assert.match(game, /canvas: platform\.canvas/);
-  assert.match(game, /if \(platform\.canvas\) scene\.background = new THREE\.Color\(0x5adbe4\)/);
+  assert.match(game, /scene\.background = new THREE\.Color\(0x5adbe4\)/);
+  assert.match(game, /platform\.loadImage\?\.\('assets\/sprout-arena-portrait\.jpg'\)/);
+  assert.match(game, /texture\.colorSpace = THREE\.NoColorSpace/);
   assert.match(game, /__happyJumpAfterRender/);
-  assert.match(game, /if \(platform\.canvas\) return false;/);
+  assert.match(game, /if \(platform\.canvas\) return true;/);
   assert.match(game, /platform\.canvas \? THREE\.NoToneMapping/);
   assert.match(game, /new THREE\.MeshBasicMaterial/);
   assert.match(game, /material\.userData\.gameGlowColor = new THREE\.Color/);
   assert.doesNotMatch(game, /material\.emissive = new THREE\.Color/);
   assert.match(game, /setMaterialGlowIntensity/);
   assert.match(game, /renderer\.shadowMap\.enabled = !platform\.canvas/);
+  assert.match(game, /BURST_PARTICLES_PER_TILE = platform\.canvas \? 4 : 10/);
+  assert.match(game, /if \(!AudioContextClass\)/);
+  assert.match(game, /if \(!context \|\| !state\.musicBus\) return false/);
 });
 
 test('the bundled renderer can fall back to WebGL 1 on physical WeChat devices', async () => {
@@ -83,4 +90,30 @@ test('the mini game packages and renders the original branded key art', async ()
   assert.match(ui, /texture\.colorSpace = THREE\.NoColorSpace/);
   assert.match(ui, /material\.toneMapped = false/);
   assert.ok(assets.every((asset) => asset.length > 50_000));
+});
+
+test('the mini game packages the AIGC portrait arena, paper surface and compact web audio mix', async () => {
+  const assets = await Promise.all([
+    readFile(path.join(root, 'wechat-minigame/assets/sprout-arena-portrait.jpg')),
+    readFile(path.join(root, 'wechat-minigame/assets/sprout-ui-paper.jpg')),
+    readFile(path.join(root, 'wechat-minigame/assets/audio/mix-v91/happyjump-bgm-bouncy-party-v91.wav')),
+    readFile(path.join(root, 'wechat-minigame/assets/audio/mix-v92/happyjump-hop-soft-pop-v92.wav'))
+  ]);
+  assert.ok(assets[0].length > 60_000 && assets[0].length < 200_000);
+  assert.ok(assets[1].length > 1_000 && assets[1].length < 20_000);
+  assert.equal(assets[2].subarray(0, 4).toString('ascii'), 'RIFF');
+  assert.equal(assets[3].subarray(0, 4).toString('ascii'), 'RIFF');
+});
+
+test('first-time WeChat players receive the complete live-board tutorial', async () => {
+  const [game, ui] = await Promise.all([
+    source('game.js'),
+    source('wechat-minigame/src/wechat-ui.mjs')
+  ]);
+  assert.match(game, /if \(platform\.canvas\) return true;/);
+  assert.match(ui, /return 'tutorial'/);
+  assert.match(ui, /function drawTutorialVisual/);
+  assert.match(ui, /clickDummy\('tutorialPrev'\)/);
+  assert.match(ui, /clickDummy\('tutorialNext'\)/);
+  assert.match(ui, /clickDummy\('tutorialClose'\)/);
 });

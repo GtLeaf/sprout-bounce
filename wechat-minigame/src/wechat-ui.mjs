@@ -15,6 +15,10 @@ const context = uiCanvas.getContext('2d');
 context.scale(ratio, ratio);
 
 const COLORS = ['#f69d46', '#f6d14e', '#7acd5a', '#42b4df', '#c982d7', '#f06b70'];
+const THEME = Object.freeze({
+  paper: '#f5f1e7', ink: '#4d4a45', muted: '#79756e',
+  aqua: '#53a895', aquaDark: '#397f70', warm: '#e4ce8b', alert: '#c97762'
+});
 const LOCAL_BEST_KEY = 'happy-jump-wechat-local-best-v2';
 const art = {};
 const buttons = {};
@@ -52,6 +56,7 @@ loadArt('logo', 'assets/happy-jump-logo.png');
 loadArt('forward', 'assets/ui-forward.png');
 loadArt('soundOn', 'assets/ui-sound-on.png');
 loadArt('soundOff', 'assets/ui-sound-off.png');
+loadArt('paper', 'assets/sprout-ui-paper.jpg');
 
 function roundRect(ctx, x, y, w, h, radius = 8) {
   const r = Math.min(radius, w / 2, h / 2);
@@ -77,6 +82,17 @@ function strokeRect(x, y, w, h, color, radius = 8, lineWidth = 1) {
   context.stroke();
 }
 
+function panel(x, y, w, h, color = 'rgba(245,241,231,0.96)', radius = 8) {
+  fillRect(x, y, w, h, color, radius);
+  if (!art.paper) return;
+  context.save();
+  roundRect(context, x, y, w, h, radius);
+  context.clip();
+  context.globalAlpha = 0.12;
+  context.drawImage(art.paper, x, y, w, h);
+  context.restore();
+}
+
 function text(value, x, y, size, color = '#173b52', align = 'left', weight = '400') {
   context.save();
   context.fillStyle = color;
@@ -88,11 +104,11 @@ function text(value, x, y, size, color = '#173b52', align = 'left', weight = '40
 }
 
 function button(name, label, x, y, w, h, primary = false, icon = null) {
-  fillRect(x, y, w, h, primary ? '#ef676d' : '#e3f2ec');
-  strokeRect(x, y, w, h, primary ? '#d94e59' : '#bcded2');
+  fillRect(x, y, w, h, primary ? THEME.aqua : 'rgba(245,241,231,0.96)', h / 2);
+  strokeRect(x, y, w, h, primary ? THEME.aquaDark : '#b8d6cd', h / 2);
   const iconSize = icon ? Math.min(24, h * 0.46) : 0;
   const center = x + w / 2 - iconSize * 0.22;
-  text(label, center, y + h / 2 + 1, primary ? 18 : 15, primary ? '#ffffff' : '#245f54', 'center', '700');
+  text(label, center, y + h / 2 + 1, primary ? 18 : 15, primary ? '#fffdf8' : THEME.ink, 'center', '700');
   if (icon) context.drawImage(icon, center + Math.min(76, w * 0.23), y + (h - iconSize) / 2, iconSize, iconSize);
   buttons[name] = { x, y, w, h };
 }
@@ -113,6 +129,7 @@ function drawBrand(y = 44) {
 }
 
 function screenForState(state = latestState) {
+  if (document.querySelector('#tutorial').classList.contains('show')) return 'tutorial';
   if (manualScreen) return manualScreen;
   if (!state) return 'home';
   if (state.over) return 'result';
@@ -136,19 +153,19 @@ function drawHome() {
   const w = width - 32;
   const h = Math.min(286, Math.max(250, height * 0.34));
   const y = height - h - 18;
-  fillRect(x, y, w, h, 'rgba(255,253,247,0.97)');
-  text(leaderboardState.player.displayName || '微信玩家', x + 20, y + 28, 17, '#173b52', 'left', '700');
-  text(leaderboardState.status, x + 20, y + 51, 11, '#58746f');
+  panel(x, y, w, h, 'rgba(245,241,231,0.97)', 26);
+  text(leaderboardState.player.displayName || '微信玩家', x + 20, y + 28, 17, THEME.ink, 'left', '700');
+  text(leaderboardState.status, x + 20, y + 51, 11, THEME.muted);
 
   context.strokeStyle = '#d7ebe4';
   context.beginPath();
   context.moveTo(x + 20, y + 67);
   context.lineTo(x + w - 20, y + 67);
   context.stroke();
-  text('历史最佳', x + 20, y + 87, 11, '#6b837f');
-  text(leaderboardState.player.bestScore || 0, x + 20, y + 116, 26, '#173b52', 'left', '700');
-  text('我的排名', x + w / 2 + 8, y + 87, 11, '#6b837f');
-  text(leaderboardState.rank ? `第 ${leaderboardState.rank} 名` : '暂无', x + w / 2 + 8, y + 116, 21, '#237063', 'left', '700');
+  text('历史最佳', x + 20, y + 87, 11, THEME.muted);
+  text(leaderboardState.player.bestScore || 0, x + 20, y + 116, 26, THEME.ink, 'left', '700');
+  text('我的排名', x + w / 2 + 8, y + 87, 11, THEME.muted);
+  text(leaderboardState.rank ? `第 ${leaderboardState.rank} 名` : '暂无', x + w / 2 + 8, y + 116, 21, THEME.aquaDark, 'left', '700');
 
   button('start', '开始挑战', x + 18, y + h - 105, w - 36, 49, true, art.forward);
   button('leaderboard', '全球排行榜', x + 18, y + h - 46, w - 36, 34, false);
@@ -159,17 +176,17 @@ function drawHud(state, levels) {
   const top = Math.max(10, Number(wxApi.getMenuButtonBoundingClientRect?.()?.bottom || 0) + 5);
   const x = 10;
   const w = width - 20;
-  fillRect(x, top, w, 82, 'rgba(255,253,247,0.92)');
+  panel(x, top, w, 82, 'rgba(245,241,231,0.92)', 24);
   const positions = [x + w * 0.12, x + w * 0.37, x + w * 0.63, x + w * 0.85];
   const labels = ['层数', '分数', '爆破回合', '时间'];
   const values = [`${state.level}/${state.levels}`, state.score, `${state.rounds}/${state.roundGoal}`, Math.max(0, Math.ceil(state.time))];
   positions.forEach((position, index) => {
-    text(labels[index], position, top + 19, 10, '#67807c', 'center');
-    text(values[index], position, top + 44, index === 1 ? 16 : 17, index === 3 && state.time <= 10 ? '#c73f4b' : '#173b52', 'center', '700');
+    text(labels[index], position, top + 19, 10, THEME.muted, 'center');
+    text(values[index], position, top + 44, index === 1 ? 16 : 17, index === 3 && state.time <= 10 ? THEME.alert : THEME.ink, 'center', '700');
   });
   text(levels[state.level - 1]?.name || `第 ${state.level} 层`, x + 16, top + 67, 11, '#2d7466', 'left', '700');
   for (let life = 0; life < 3; life += 1) {
-    context.fillStyle = life < state.lives ? '#ef676d' : '#d7dfdc';
+    context.fillStyle = life < state.lives ? THEME.alert : '#d7dfdc';
     context.beginPath();
     context.arc(x + w - 68 + life * 17, top + 67, 5, 0, Math.PI * 2);
     context.fill();
@@ -179,7 +196,7 @@ function drawHud(state, levels) {
 
   const soundX = width - 49;
   const soundY = top + 91;
-  fillRect(soundX, soundY, 39, 39, 'rgba(255,253,247,0.9)');
+  panel(soundX, soundY, 39, 39, 'rgba(245,241,231,0.92)', 20);
   const soundArt = state.sound ? art.soundOn : art.soundOff;
   if (soundArt) context.drawImage(soundArt, soundX + 8, soundY + 8, 23, 23);
   else text(state.sound ? '♪' : '×', soundX + 19.5, soundY + 20, 21, '#245f54', 'center', '700');
@@ -203,7 +220,7 @@ function modalBase() {
   const x = 22;
   const h = Math.min(404, height - 120);
   const y = (height - h) / 2;
-  fillRect(x, y, w, h, 'rgba(255,253,247,0.98)');
+  panel(x, y, w, h, 'rgba(245,241,231,0.98)', 30);
   return { x, y, w, h };
 }
 
@@ -212,12 +229,12 @@ function drawLevelResult(state, levels) {
   const { x, y, w, h } = modalBase();
   const final = state.level === state.levels;
   text(final ? '全部关卡完成' : '本关完成', width / 2, y + 38, 12, '#2d7466', 'center', '700');
-  text(`第 ${state.level} 层完成`, width / 2, y + 76, 27, '#173b52', 'center', '700');
+  text(`第 ${state.level} 层完成`, width / 2, y + 76, 27, THEME.ink, 'center', '700');
   const values = [Math.max(0, state.score), state.levelTilesExploded, `${state.rounds}/${state.roundGoal}`];
   ['总分', '爆破格数', '完成回合'].forEach((label, index) => {
     const column = x + w * (0.18 + index * 0.32);
-    text(label, column, y + 132, 11, '#718783', 'center');
-    text(values[index], column, y + 161, 20, '#215f55', 'center', '700');
+    text(label, column, y + 132, 11, THEME.muted, 'center');
+    text(values[index], column, y + 161, 20, THEME.aquaDark, 'center', '700');
   });
   text(final ? '八层挑战已经完成' : levels[state.level]?.name || '下一层', width / 2, y + 215, 15, '#58746f', 'center');
   button('continue', final ? '查看总成绩' : '进入下一层', x + 22, y + h - 72, w - 44, 50, true);
@@ -228,11 +245,11 @@ function drawResult(state) {
   const { x, y, w, h } = modalBase();
   const won = document.querySelector('#resultTag').textContent === '全部通关';
   text(won ? '八层通关' : '挑战结束', width / 2, y + 44, 13, '#2d7466', 'center', '700');
-  text(document.querySelector('#resultTitle').textContent || (won ? '方阵大师' : '再接再厉'), width / 2, y + 82, 28, '#173b52', 'center', '700');
-  text(state.score, width / 2, y + 142, 43, '#ef676d', 'center', '700');
-  text('本局得分', width / 2, y + 177, 12, '#718783', 'center');
-  text(`历史最佳  ${leaderboardState.player.bestScore || state.score}`, width / 2, y + 216, 16, '#236f60', 'center', '700');
-  text(leaderboardState.rank ? `全球第 ${leaderboardState.rank} 名` : leaderboardState.status, width / 2, y + 244, 12, '#58746f', 'center');
+  text(document.querySelector('#resultTitle').textContent || (won ? '方阵大师' : '再接再厉'), width / 2, y + 82, 28, THEME.ink, 'center', '700');
+  text(state.score, width / 2, y + 142, 43, THEME.aqua, 'center', '700');
+  text('本局得分', width / 2, y + 177, 12, THEME.muted, 'center');
+  text(`历史最佳  ${leaderboardState.player.bestScore || state.score}`, width / 2, y + 216, 16, THEME.aquaDark, 'center', '700');
+  text(leaderboardState.rank ? `全球第 ${leaderboardState.rank} 名` : leaderboardState.status, width / 2, y + 244, 12, THEME.muted, 'center');
   button('restart', '再玩一次', x + 22, y + h - 116, w - 44, 48, true);
   button('resultLeaderboard', '查看排行榜', x + 22, y + h - 56, w - 44, 38, false);
   hideProfileButton();
@@ -246,8 +263,8 @@ function drawLeaderboard() {
   const y = 104;
   const w = width - 36;
   const h = height - 124;
-  fillRect(x, y, w, h, 'rgba(255,253,247,0.98)');
-  text('全球排行榜', width / 2, y + 34, 22, '#173b52', 'center', '700');
+  panel(x, y, w, h, 'rgba(245,241,231,0.98)', 28);
+  text('全球排行榜', width / 2, y + 34, 22, THEME.ink, 'center', '700');
   const maxRows = Math.max(3, Math.floor((h - 112) / 44));
   const entries = leaderboardState.entries.slice(0, maxRows);
   if (!entries.length) {
@@ -258,11 +275,94 @@ function drawLeaderboard() {
     const rowY = y + 76 + index * 44;
     if (index % 2 === 0) fillRect(x + 12, rowY - 18, w - 24, 38, '#edf7f3', 5);
     text(index + 1, x + 34, rowY, 14, index < 3 ? '#d8812e' : '#68817d', 'center', '700');
-    text(entry.displayName || '微信玩家', x + 58, rowY, 13, '#173b52', 'left', '700');
-    text(entry.bestScore || 0, x + w - 24, rowY, 15, '#236f60', 'right', '700');
+    text(entry.displayName || '微信玩家', x + 58, rowY, 13, THEME.ink, 'left', '700');
+    text(entry.bestScore || 0, x + w - 24, rowY, 15, THEME.aquaDark, 'right', '700');
   });
   button('back', '返回', x + 20, y + h - 50, w - 40, 36, false);
   hideProfileButton();
+}
+
+function drawTutorialVisual(step, centerY) {
+  if (step === 0) {
+    const size = Math.min(156, width * 0.42);
+    const x = width / 2;
+    panel(x - size / 2, centerY - size / 2, size, size, 'rgba(245,241,231,0.9)', size / 2);
+    const directions = [
+      ['↑', x, centerY - size * 0.34], ['→', x + size * 0.34, centerY],
+      ['↓', x, centerY + size * 0.34], ['←', x - size * 0.34, centerY]
+    ];
+    directions.forEach(([label, cx, cy]) => {
+      fillRect(cx - 18, cy - 18, 36, 36, THEME.aqua, 18);
+      text(label, cx, cy, 23, '#fffdf8', 'center', '700');
+    });
+    fillRect(x - 15, centerY - 15, 30, 30, THEME.alert, 15);
+    return;
+  }
+
+  const tile = Math.min(54, width * 0.14);
+  const gap = 7;
+  if (step === 1) {
+    const originX = width / 2 - (tile * 3 + gap * 2) / 2;
+    const originY = centerY - (tile * 2 + gap) / 2;
+    [[1, 0], [0, 1], [1, 1], [2, 1]].forEach(([col, row], index) => {
+      fillRect(originX + col * (tile + gap), originY + row * (tile + gap), tile, tile, COLORS[5], 15);
+      strokeRect(originX + col * (tile + gap), originY + row * (tile + gap), tile, tile, index === 2 ? '#fff4b4' : '#d45c5f', 15, index === 2 ? 4 : 2);
+    });
+    return;
+  }
+
+  const originX = width / 2 - tile * 1.55;
+  const originY = centerY - tile - gap / 2;
+  [[0, 0], [1, 0], [0, 1], [1, 1]].forEach(([col, row]) => {
+    fillRect(originX + col * (tile + gap), originY + row * (tile + gap), tile, tile, '#ef7770', 15);
+    strokeRect(originX + col * (tile + gap), originY + row * (tile + gap), tile, tile, '#fff0a8', 15, 3);
+  });
+  text('→', width / 2 + tile * 0.52, centerY, 34, '#fffdf8', 'center', '700');
+  fillRect(width / 2 + tile, centerY - tile / 2, tile, tile, THEME.aqua, 15);
+}
+
+function drawTutorial(state, levels) {
+  drawHud(state, levels);
+  context.fillStyle = 'rgba(29,77,78,0.28)';
+  context.fillRect(0, 0, width, height);
+  const tutorial = document.querySelector('#tutorial');
+  const kicker = document.querySelector('#tutorialKicker').textContent || '1 / 3';
+  const title = document.querySelector('#tutorialTitle').textContent || '滑动跳跃';
+  const description = document.querySelector('#tutorialText').textContent || '向上下左右滑动，让角色跳到相邻方块。';
+  const step = Math.max(0, Math.min(2, Number(kicker.split('/')[0]) - 1 || 0));
+  const safeTop = Math.max(14, Number(wxApi.getMenuButtonBoundingClientRect?.()?.bottom || 0) + 10);
+  const cardX = 14;
+  const cardW = width - 28;
+  const cardH = Math.min(192, height * 0.25);
+  const cardY = height - cardH - 14;
+  drawTutorialVisual(step, safeTop + Math.max(118, (cardY - safeTop) * 0.48));
+  panel(cardX, cardY, cardW, cardH, 'rgba(245,241,231,0.98)', 26);
+  text(kicker, cardX + 20, cardY + 24, 11, THEME.aqua, 'left', '700');
+  text(title, cardX + 20, cardY + 53, 23, THEME.ink, 'left', '700');
+  text(description, cardX + 20, cardY + 82, width < 380 ? 12 : 13, THEME.muted, 'left', '500');
+
+  const controlY = cardY + cardH - 38;
+  if (!document.querySelector('#tutorialPrev').disabled) {
+    fillRect(cardX + 18, controlY - 21, 42, 42, THEME.aqua, 21);
+    text('‹', cardX + 39, controlY - 1, 30, '#fffdf8', 'center', '700');
+    buttons.tutorialPrev = { x: cardX + 18, y: controlY - 21, w: 42, h: 42 };
+  }
+  [0, 1, 2].forEach((index) => {
+    context.fillStyle = index === step ? THEME.aqua : 'rgba(77,74,69,0.18)';
+    context.beginPath();
+    context.arc(width / 2 + (index - 1) * 18, controlY, index === step ? 5 : 4, 0, Math.PI * 2);
+    context.fill();
+  });
+  fillRect(cardX + cardW - 60, controlY - 21, 42, 42, THEME.aqua, 21);
+  text(step === 2 ? '✓' : '›', cardX + cardW - 39, controlY - 1, step === 2 ? 22 : 30, '#fffdf8', 'center', '700');
+  buttons.tutorialNext = { x: cardX + cardW - 60, y: controlY - 21, w: 42, h: 42 };
+
+  const closeY = safeTop + 8;
+  fillRect(12, closeY, 38, 38, 'rgba(245,241,231,0.94)', 19);
+  text('×', 31, closeY + 18, 25, THEME.ink, 'center', '500');
+  buttons.tutorialClose = { x: 12, y: closeY, w: 38, h: 38 };
+  hideProfileButton();
+  tutorial.hidden = false;
 }
 
 function draw(state, levels) {
@@ -271,10 +371,11 @@ function draw(state, levels) {
   const screen = screenForState(state);
   if (screen === 'home') drawHome();
   else if (screen === 'game') drawHud(state, levels);
+  else if (screen === 'tutorial') drawTutorial(state, levels);
   else if (screen === 'levelResult') drawLevelResult(state, levels);
   else if (screen === 'result') drawResult(state);
   else drawLeaderboard();
-  drawToast();
+  if (screen !== 'tutorial') drawToast();
   texture.needsUpdate = true;
 }
 
@@ -376,6 +477,10 @@ function handleTap(point) {
   if (screen === 'home') {
     if (inside(point, buttons.start)) clickDummy('start');
     else if (inside(point, buttons.leaderboard)) openLeaderboard('home');
+  } else if (screen === 'tutorial') {
+    if (inside(point, buttons.tutorialPrev)) clickDummy('tutorialPrev');
+    else if (inside(point, buttons.tutorialNext)) clickDummy('tutorialNext');
+    else if (inside(point, buttons.tutorialClose)) clickDummy('tutorialClose');
   } else if (screen === 'game' && inside(point, buttons.sound)) clickDummy('sound');
   else if (screen === 'levelResult' && inside(point, buttons.continue)) clickDummy('levelContinue');
   else if (screen === 'result') {
@@ -462,11 +567,14 @@ function renderWechatOverlay({ renderer, state, levels }) {
   previousOver = state.over;
 
   const toast = document.querySelector('#toast');
+  const tutorial = document.querySelector('#tutorial');
   const signature = JSON.stringify([
     screenForState(state), state.level, state.score, state.rounds, state.lives, Math.ceil(state.time),
     state.sound, state.levelResultOpen, state.over, state.nextQueue.slice(0, 4), toast.textContent,
     toast.classList.contains('show'), leaderboardState.status, leaderboardState.player.bestScore,
-    leaderboardState.rank, leaderboardState.entries.length
+    leaderboardState.rank, leaderboardState.entries.length,
+    tutorial.classList.contains('show'), document.querySelector('#tutorialKicker').textContent,
+    document.querySelector('#tutorialTitle').textContent
   ]);
   const now = Date.now();
   if (signature !== lastSignature || now - lastDraw > 500) {
