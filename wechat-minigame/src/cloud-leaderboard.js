@@ -21,10 +21,9 @@ class WechatLeaderboard {
   }
 
   async initialize() {
+    if (!this.config.cloudEnvId) throw new Error('微信云环境尚未配置');
     if (!this.wx.cloud) throw new Error('当前微信基础库不支持云开发');
-    const initOptions = { traceUser: true };
-    if (this.config.cloudEnvId) initOptions.env = this.config.cloudEnvId;
-    this.wx.cloud.init(initOptions);
+    this.wx.cloud.init({ traceUser: true, env: this.config.cloudEnvId });
 
     // Refresh the WeChat session once per launch. The temporary code never
     // leaves WeChat APIs; player identity is resolved inside the cloud function.

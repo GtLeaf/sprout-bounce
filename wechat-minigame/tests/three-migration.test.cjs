@@ -107,7 +107,7 @@ test('physical-device input bypasses synthetic browser events for controls and s
 
 test('the home screen identifies the current physical-device preview build', async () => {
   const ui = await source('wechat-minigame/src/wechat-ui.mjs');
-  assert.match(ui, /BUILD_LABEL = '体验版 0\.3\.5'/);
+  assert.match(ui, /BUILD_LABEL = '体验版 0\.3\.6'/);
   assert.match(ui, /text\(BUILD_LABEL/);
 });
 
@@ -164,4 +164,10 @@ test('developer-tool diagnostics expose runtime state without running on phones'
   assert.match(ui, /happy-jump-devtools-touch-v1/);
   assert.match(ui, /runDevtoolsTouchTest\(\)/);
   assert.match(ui, /if \(!isDevtools\) return/);
+});
+
+test('a test AppID saves results locally without calling an unavailable cloud API', async () => {
+  const ui = await source('wechat-minigame/src/wechat-ui.mjs');
+  assert.match(ui, /function saveResult\(state\)[\s\S]*?if \(!cloud\.ready\) \{[\s\S]*?成绩已保存在本机[\s\S]*?return;/);
+  assert.match(ui, /if \(!cloud\.ready\) return;[\s\S]*?cloud\.refresh\(\)/);
 });

@@ -58,10 +58,9 @@ var require_cloud_leaderboard = __commonJS({
         this.ready = false;
       }
       async initialize() {
+        if (!this.config.cloudEnvId) throw new Error("\u5FAE\u4FE1\u4E91\u73AF\u5883\u5C1A\u672A\u914D\u7F6E");
         if (!this.wx.cloud) throw new Error("\u5F53\u524D\u5FAE\u4FE1\u57FA\u7840\u5E93\u4E0D\u652F\u6301\u4E91\u5F00\u53D1");
-        const initOptions = { traceUser: true };
-        if (this.config.cloudEnvId) initOptions.env = this.config.cloudEnvId;
-        this.wx.cloud.init(initOptions);
+        this.wx.cloud.init({ traceUser: true, env: this.config.cloudEnvId });
         const loginResult = await callWx(this.wx.login.bind(this.wx), { timeout: 8e3 });
         if (!(loginResult == null ? void 0 : loginResult.code)) throw new Error("\u5FAE\u4FE1\u767B\u5F55\u5931\u8D25\uFF0C\u8BF7\u91CD\u65B0\u8FDB\u5165\u6E38\u620F");
         const result = await this.call("login");
@@ -25057,7 +25056,7 @@ var THEME = Object.freeze({
   alert: "#c97762"
 });
 var LOCAL_BEST_KEY = "happy-jump-wechat-local-best-v2";
-var BUILD_LABEL = "\u4F53\u9A8C\u7248 0.3.5";
+var BUILD_LABEL = "\u4F53\u9A8C\u7248 0.3.6";
 var art = {};
 var buttons = {};
 var leaderboardState = {
@@ -25465,6 +25464,11 @@ function saveResult(state2) {
   if (state2.score > leaderboardState.player.bestScore) {
     leaderboardState.player.bestScore = state2.score;
     wxApi2.setStorageSync(LOCAL_BEST_KEY, state2.score);
+  }
+  if (!cloud.ready) {
+    leaderboardState.status = "\u6210\u7EE9\u5DF2\u4FDD\u5B58\u5728\u672C\u673A";
+    lastSignature = "";
+    return;
   }
   const won = document3.querySelector("#resultTag").textContent === "\u5168\u90E8\u901A\u5173";
   cloud.submitScore({ score: state2.score, level: state2.level, won }).then((result) => {

@@ -40,6 +40,14 @@ test('login restores the returning WeChat player and ranking data', async () => 
   assert.deepEqual(calls[1], { action: 'login' });
 });
 
+test('an unconfigured test AppID stays local without calling WeChat cloud APIs', async () => {
+  const { calls, wxMock } = createWxMock([]);
+  const service = new WechatLeaderboard(wxMock, { cloudEnvId: '', cloudFunctionName: 'leaderboard' });
+  await assert.rejects(() => service.initialize(), /云环境尚未配置/);
+  assert.deepEqual(calls, []);
+  assert.equal(service.ready, false);
+});
+
 test('authorized profile is sent as a CloudID instead of client-provided profile text', async () => {
   const response = { ok: true, player: { displayName: '微信昵称' }, entries: [], myRank: null };
   const { calls, wxMock } = createWxMock([response]);

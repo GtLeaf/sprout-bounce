@@ -26,7 +26,7 @@ const THEME = Object.freeze({
   aqua: '#53a895', aquaDark: '#397f70', warm: '#e4ce8b', alert: '#c97762'
 });
 const LOCAL_BEST_KEY = 'happy-jump-wechat-local-best-v2';
-const BUILD_LABEL = '体验版 0.3.5';
+const BUILD_LABEL = '体验版 0.3.6';
 const art = {};
 const buttons = {};
 const leaderboardState = {
@@ -462,6 +462,11 @@ function saveResult(state) {
   if (state.score > leaderboardState.player.bestScore) {
     leaderboardState.player.bestScore = state.score;
     wxApi.setStorageSync(LOCAL_BEST_KEY, state.score);
+  }
+  if (!cloud.ready) {
+    leaderboardState.status = '成绩已保存在本机';
+    lastSignature = '';
+    return;
   }
   const won = document.querySelector('#resultTag').textContent === '全部通关';
   cloud.submitScore({ score: state.score, level: state.level, won })
