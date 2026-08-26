@@ -77,6 +77,7 @@ test('the bundled renderer can fall back to WebGL 1 on physical WeChat devices',
 
 test('startup failures are visible instead of leaving a black screen', async () => {
   const entry = await source('wechat-minigame/game.js');
+  assert.match(entry, /wx\.hideLoading/);
   assert.match(entry, /wx\.showModal/);
   assert.match(entry, /游戏启动失败/);
 });
@@ -111,8 +112,16 @@ test('physical-device input bypasses synthetic browser events for controls and s
 
 test('the home screen identifies the current physical-device preview build', async () => {
   const ui = await source('wechat-minigame/src/wechat-ui.mjs');
-  assert.match(ui, /BUILD_LABEL = '体验版 0\.3\.7'/);
+  assert.match(ui, /BUILD_LABEL = '体验版 0\.3\.8'/);
   assert.match(ui, /text\(BUILD_LABEL/);
+});
+
+test('the native loader masks incomplete artwork until the first complete frame', async () => {
+  const ui = await source('wechat-minigame/src/wechat-ui.mjs');
+  assert.match(ui, /wxApi\.showLoading\?\.\(\{ title: '加载中', mask: true \}\)/);
+  assert.match(ui, /const bootstrapLoadingTimeout = setTimeout\(\(\) => hideBootstrapLoading\(\), 8000\)/);
+  assert.match(ui, /function settleArtLoad\(\)/);
+  assert.match(ui, /if \(pendingArtLoads === 0\) hideBootstrapLoading\(\)/);
 });
 
 test('the mini game packages and renders the original branded key art', async () => {
@@ -172,6 +181,8 @@ test('developer-tool diagnostics expose runtime state without running on phones'
   assert.match(ui, /if \(!isDevtools\) return/);
   assert.match(ui, /lifecycleDebug/);
   assert.match(ui, /touchActive: Boolean\(touch\)/);
+  assert.match(ui, /startupLoading: bootstrapLoading/);
+  assert.match(ui, /pendingArtLoads/);
 });
 
 test('a test AppID saves results locally without calling an unavailable cloud API', async () => {

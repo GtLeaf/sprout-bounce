@@ -27,7 +27,8 @@ const THEME = Object.freeze({
   aqua: '#53a895', aquaDark: '#397f70', warm: '#e4ce8b', alert: '#c97762'
 });
 const LOCAL_BEST_KEY = 'happy-jump-wechat-local-best-v2';
-const BUILD_LABEL = '体验版 0.3.7';
+const BUILD_LABEL = '体验版 0.3.8';
+const ART_COUNT = 6;
 const art = {};
 const buttons = {};
 const leaderboardState = {
@@ -54,14 +55,34 @@ let lastTouchTestId = null;
 let lastLifecycleTestId = null;
 let touchReceipt = null;
 let lifecycleDebug = { phase: 'launch', at: Date.now() };
+let pendingArtLoads = ART_COUNT;
+let bootstrapLoading = true;
+
+try { wxApi.showLoading?.({ title: '加载中', mask: true }); } catch { /* Loading UI must not block startup. */ }
+const bootstrapLoadingTimeout = setTimeout(() => hideBootstrapLoading(), 8000);
+
+function hideBootstrapLoading() {
+  if (!bootstrapLoading) return;
+  bootstrapLoading = false;
+  clearTimeout(bootstrapLoadingTimeout);
+  try { wxApi.hideLoading?.(); } catch { /* The rendered game remains usable without the native loader. */ }
+}
+
+function settleArtLoad() {
+  pendingArtLoads = Math.max(0, pendingArtLoads - 1);
+  lastSignature = '';
+}
 
 function loadArt(name, source) {
   const image = wxApi.createImage();
   image.onload = () => {
     art[name] = image;
-    lastSignature = '';
+    settleArtLoad();
   };
-  image.onerror = () => { art[name] = null; };
+  image.onerror = () => {
+    art[name] = null;
+    settleArtLoad();
+  };
   image.src = source;
 }
 
@@ -429,6 +450,8 @@ function writeDevtoolsState(state) {
       touchDebug,
       touchActive: Boolean(touch),
       lifecycleDebug,
+      startupLoading: bootstrapLoading,
+      pendingArtLoads,
       overlayReady: Boolean(overlay && texture),
       updatedAt: Date.now()
     });
@@ -746,6 +769,7 @@ function renderWechatOverlay({ renderer, state, levels }) {
   renderer.clearDepth();
   renderer.render(overlay.scene, overlay.camera);
   renderer.autoClear = autoClear;
+  if (pendingArtLoads === 0) hideBootstrapLoading();
 }
 
 let overlayErrorLogged = false;
