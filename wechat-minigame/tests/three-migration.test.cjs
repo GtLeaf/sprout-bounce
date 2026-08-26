@@ -76,6 +76,13 @@ test('startup failures are visible instead of leaving a black screen', async () 
   assert.match(entry, /游戏启动失败/);
 });
 
+test('the result screen can focus and activate its registered restart control', async () => {
+  const game = await source('game.js');
+  assert.match(game, /result: \$\('#result'\), restart: \$\('#restart'\)/);
+  assert.match(game, /ui\.restart\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(game, /\$\('#restart'\)\.addEventListener\('click', reset\)/);
+});
+
 test('physical-device taps accept page coordinates and trigger UI on touch start', async () => {
   const ui = await source('wechat-minigame/src/wechat-ui.mjs');
   assert.match(ui, /value\.clientX \?\? value\.pageX \?\? value\.x \?\? value\.screenX/);

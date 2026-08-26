@@ -22406,6 +22406,7 @@ var QA_MODE = new URLSearchParams(location.search).has("qa");
 var ui = {
   intro: $("#intro"),
   result: $("#result"),
+  restart: $("#restart"),
   levelResult: $("#levelResult"),
   level: $("#level"),
   score: $("#score"),

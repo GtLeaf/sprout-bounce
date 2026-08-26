@@ -24,7 +24,7 @@ const $ = (selector) => document.querySelector(selector);
 const QA_MODE = new URLSearchParams(location.search).has('qa');
 
 const ui = {
-  intro: $('#intro'), result: $('#result'), levelResult: $('#levelResult'), level: $('#level'), score: $('#score'),
+  intro: $('#intro'), result: $('#result'), restart: $('#restart'), levelResult: $('#levelResult'), level: $('#level'), score: $('#score'),
   timer: $('#timer'), rounds: $('#combo'), roundGoal: $('#goal'), lives: $('#lives'),
   next: $('#next'), toast: $('#toast'),
   levelResultKicker: $('#levelResultKicker'), levelResultTitle: $('#levelResultTitle'),
