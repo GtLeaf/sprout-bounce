@@ -15,7 +15,7 @@
 
 1. 在微信公众平台注册“小游戏”并取得小游戏 AppID。不要使用普通小程序 AppID。
 2. 用微信开发者工具导入本目录 `wechat-minigame`，项目类型选择“小游戏”。
-3. 把 `project.config.json` 中的 `touristappid` 替换为真实小游戏 AppID。
+3. 确认 `project.config.json` 中的 `appid` 是正式小游戏 AppID。测试号可以预览和上传开发版本，但微信不允许测试号使用云服务或提交正式审核。
 4. 在开发者工具中开通云开发并创建一个环境，把环境 ID 填入 `src/config.js` 的 `cloudEnvId`。
 5. 在云数据库创建集合 `happy_jump_players`。集合权限设为“所有用户不可读写”；小游戏客户端只通过云函数访问，云函数仍可正常读写。
 6. 右键 `cloudfunctions/leaderboard`，选择“上传并部署：云端安装依赖”。
