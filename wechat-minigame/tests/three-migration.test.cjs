@@ -41,3 +41,20 @@ test('the shared 3D game exposes its renderer hook and native scene background',
   assert.match(game, /__happyJumpAfterRender/);
   assert.match(game, /if \(platform\.canvas\) return false;/);
 });
+
+test('the bundled renderer can fall back to WebGL 1 on physical WeChat devices', async () => {
+  const [three, bundle] = await Promise.all([
+    source('vendor/three/three.module.js'),
+    source('wechat-minigame/src/main-3d.js')
+  ]);
+  assert.match(three, /const REVISION = '162'/);
+  assert.match(three, /\[ 'webgl2', 'webgl', 'experimental-webgl' \]/);
+  assert.doesNotMatch(bundle, /WebGL 1 is not supported since r163/);
+  assert.match(bundle, /\[\"webgl2\", \"webgl\", \"experimental-webgl\"\]/);
+});
+
+test('startup failures are visible instead of leaving a black screen', async () => {
+  const entry = await source('wechat-minigame/game.js');
+  assert.match(entry, /wx\.showModal/);
+  assert.match(entry, /游戏启动失败/);
+});
