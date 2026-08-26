@@ -5,6 +5,6 @@
   "type": "module",
   "scripts": {
     "start": "node serve.mjs",
-    "test": "node --test audio-design.test.mjs controls.test.mjs game-progression.test.mjs game-rules.test.mjs leaderboard-service.test.mjs wechat-minigame/tests/rules.test.cjs wechat-minigame/tests/leaderboard-core.test.cjs wechat-minigame/tests/cloud-leaderboard.test.cjs"
+    "test": "node --test audio-design.test.mjs controls.test.mjs game-progression.test.mjs game-rules.test.mjs leaderboard-service.test.mjs wechat-minigame/tests/rules.test.cjs wechat-minigame/tests/leaderboard-core.test.cjs wechat-minigame/tests/cloud-leaderboard.test.cjs wechat-minigame/tests/three-migration.test.cjs"
   }
 }

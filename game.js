@@ -4,6 +4,22 @@ import { EXPLOSION_TIMING, LEVELS, REWARD_TILE_THRESHOLDS, TILES_PER_ROUND, TILE
 import { isChallengingStartBoard, orthogonalComponent } from './game-rules.mjs?v=88';
 import { createCloudLeaderboard } from './leaderboard-service.mjs?v=1';
 
+const platform = globalThis.__happyJumpPlatform || {};
+const document = platform.document || globalThis.document;
+const window = globalThis;
+const localStorage = platform.storage || globalThis.localStorage;
+const navigator = platform.navigator || globalThis.navigator || {};
+const location = platform.location || globalThis.location || { search: '' };
+const innerWidth = platform.width || globalThis.innerWidth;
+const innerHeight = platform.height || globalThis.innerHeight;
+const devicePixelRatio = platform.ratio || globalThis.devicePixelRatio || 1;
+const performance = platform.performance || globalThis.performance;
+const matchMedia = platform.matchMedia || globalThis.matchMedia;
+const requestAnimationFrame = platform.requestAnimationFrame || globalThis.requestAnimationFrame.bind(globalThis);
+const addEventListener = platform.addEventListener || globalThis.addEventListener.bind(globalThis);
+const fetch = platform.fetch || globalThis.fetch;
+const URLSearchParams = platform.URLSearchParams || globalThis.URLSearchParams;
+
 const $ = (selector) => document.querySelector(selector);
 const QA_MODE = new URLSearchParams(location.search).has('qa');
 
@@ -62,6 +78,7 @@ function rememberTutorial() {
 }
 
 function isMobileTutorialVisit() {
+  if (platform.canvas) return false;
   if (TUTORIAL_QUERY === '1') return true;
   if (TUTORIAL_QUERY === '0') return false;
   return innerWidth <= 900 && (innerWidth <= 600 || navigator.maxTouchPoints > 0 || matchMedia('(pointer: coarse)').matches);
@@ -132,10 +149,11 @@ addEventListener('keydown', (event) => {
 });
 
 const scene = new THREE.Scene();
+if (platform.canvas) scene.background = new THREE.Color(0x5adbe4);
 scene.fog = new THREE.Fog(0x5adbe4, 34, 58);
 
 const camera = new THREE.PerspectiveCamera(43, innerWidth / innerHeight, 0.1, 100);
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+const renderer = new THREE.WebGLRenderer({ canvas: platform.canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.setClearColor(0x14245b, 0);
@@ -2380,6 +2398,7 @@ function loop() {
   update(delta, elapsed);
   updateCamera(delta);
   renderer.render(scene, camera);
+  globalThis.__happyJumpAfterRender?.({ renderer, scene, camera, state, levels: LEVELS });
 }
 loop();
 
@@ -2463,6 +2482,8 @@ addEventListener('resize', () => {
 window.__bounceGrid = {
   roundsForTileCount,
   getState: () => ({
+    running: state.running,
+    over: state.over,
     level: state.level + 1,
     score: state.score,
     rounds: state.rounds,
@@ -2509,6 +2530,7 @@ window.__bounceGrid = {
     characterMode: 'procedural-low-poly-3d',
     matchRule: 'orthogonal-connected-4',
     player: state.currentTile ? [state.currentTile.userData.row, state.currentTile.userData.col] : null,
+    nextQueue: state.nextQueue.slice(0, 4),
     tileStates: tiles.reduce((counts, tile) => {
       counts[tile.userData.state] = (counts[tile.userData.state] || 0) + 1;
       return counts;
