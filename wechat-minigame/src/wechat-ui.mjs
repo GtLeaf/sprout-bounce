@@ -1,7 +1,8 @@
 import * as THREE from '../../vendor/three/three.module.js';
 import config from './config.js';
 import leaderboardModule from './cloud-leaderboard.js';
-import { height, nativeCanvas, ratio, width } from './mini-shim.mjs';
+import { height, nativeCanvas, pixelRatio, ratio, width } from './mini-shim.mjs';
+import { touchPoints } from './touch-coordinates.mjs';
 
 const { WechatLeaderboard } = leaderboardModule;
 const wxApi = globalThis.wx;
@@ -9,8 +10,10 @@ const document = globalThis.__happyJumpPlatform.document;
 const board = globalThis.__bounceGrid;
 const cloud = new WechatLeaderboard(wxApi, config);
 const deviceInfo = wxApi.getDeviceInfo?.() || wxApi.getSystemInfoSync?.() || {};
+const windowInfo = wxApi.getWindowInfo?.() || wxApi.getSystemInfoSync?.() || {};
 const isDevtools = deviceInfo.platform === 'devtools' || deviceInfo.brand === 'devtools';
 const DEVTOOLS_STATE_KEY = 'happy-jump-devtools-state-v1';
+const DEVTOOLS_TOUCH_KEY = 'happy-jump-devtools-touch-v1';
 const uiCanvas = wxApi.createCanvas();
 uiCanvas.width = Math.max(1, Math.floor(width * ratio));
 uiCanvas.height = Math.max(1, Math.floor(height * ratio));
@@ -23,7 +26,7 @@ const THEME = Object.freeze({
   aqua: '#53a895', aquaDark: '#397f70', warm: '#e4ce8b', alert: '#c97762'
 });
 const LOCAL_BEST_KEY = 'happy-jump-wechat-local-best-v2';
-const BUILD_LABEL = '体验版 0.3.3';
+const BUILD_LABEL = '体验版 0.3.4';
 const art = {};
 const buttons = {};
 const leaderboardState = {
@@ -45,6 +48,8 @@ let lastSignature = '';
 let lastDraw = 0;
 let userInfoButton = null;
 let touchDebug = null;
+let recentTouch = null;
+let lastTouchTestId = null;
 
 function loadArt(name, source) {
   const image = wxApi.createImage();
@@ -528,27 +533,42 @@ function handleTap(point) {
   }
 }
 
-function touchPoint(value) {
-  if (!value) return null;
-  let x = Number(value.clientX ?? value.pageX ?? value.x ?? value.screenX);
-  let y = Number(value.clientY ?? value.pageY ?? value.y ?? value.screenY);
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-  if (x > width + 4 || y > height + 4) {
-    const scale = Math.max(1, ratio);
-    x /= scale;
-    y /= scale;
-  }
-  return { x, y };
+function pointsForTouch(value) {
+  return touchPoints(value, {
+    width,
+    height,
+    renderRatio: ratio,
+    devicePixelRatio: pixelRatio,
+    screenTop: Number(windowInfo.screenTop || windowInfo.statusBarHeight || 0)
+  });
+}
+
+function pointForTouch(value) {
+  const points = pointsForTouch(value);
+  const buttonPoint = points.find((point) => Object.values(buttons).some((rect) => inside(point, rect)));
+  return buttonPoint || points[0] || null;
+}
+
+function duplicateTouch(phase, point) {
+  if (!point) return false;
+  const now = Date.now();
+  const duplicate = recentTouch && recentTouch.phase === phase && now - recentTouch.at < 80
+    && Math.hypot(point.x - recentTouch.x, point.y - recentTouch.y) < 2;
+  recentTouch = { phase, x: point.x, y: point.y, at: now };
+  return duplicate;
 }
 
 function pointerEvent(type, point) {
   return { type, clientX: point.x, clientY: point.y, pointerId: 1, pointerType: 'touch', preventDefault() {} };
 }
 
-wxApi.onTouchStart((event) => {
-  const point = touchPoint(event.touches?.[0]);
-  touchDebug = { phase: 'start', point, touches: event.touches?.length || 0, changedTouches: event.changedTouches?.length || 0 };
+function onTouchStart(event) {
+  const value = event.touches?.[0] || event.changedTouches?.[0];
+  const candidates = pointsForTouch(value);
+  const point = pointForTouch(value);
+  touchDebug = { phase: 'start', point, candidates, touches: event.touches?.length || 0, changedTouches: event.changedTouches?.length || 0 };
   if (!point) return;
+  if (duplicateTouch('start', point)) return;
   const screen = screenForState();
   const uiButton = Object.values(buttons).some((rect) => inside(point, rect));
   if (uiButton) {
@@ -562,31 +582,53 @@ wxApi.onTouchStart((event) => {
     nativeCanvas.dispatchEvent(pointerEvent('pointerdown', point));
     globalThis.__happyJumpPlatform.dispatchEvent(pointerEvent('pointerdown', point));
   }
-});
+}
 
-wxApi.onTouchMove((event) => {
-  const point = touchPoint(event.touches?.[0]);
+function onTouchMove(event) {
+  const point = pointForTouch(event.touches?.[0] || event.changedTouches?.[0]);
   touchDebug = { phase: 'move', point, touches: event.touches?.length || 0, changedTouches: event.changedTouches?.length || 0 };
   if (!touch || !point) return;
+  if (duplicateTouch('move', point)) return;
   touch.last = point;
   if (touch.canvas) nativeCanvas.dispatchEvent(pointerEvent('pointermove', point));
-});
+}
 
-wxApi.onTouchEnd((event) => {
+function onTouchEnd(event) {
   if (!touch) return;
-  const point = touchPoint(event.changedTouches?.[0]) || touch.last;
+  const point = pointForTouch(event.changedTouches?.[0] || event.touches?.[0]) || touch.last;
   touchDebug = { phase: 'end', point, touches: event.touches?.length || 0, changedTouches: event.changedTouches?.length || 0 };
+  if (duplicateTouch('end', point)) return;
   const active = touch;
   touch = null;
   if (active.handled) return;
   if (active.canvas) nativeCanvas.dispatchEvent(pointerEvent('pointerup', point));
   else if (Math.hypot(point.x - active.start.x, point.y - active.start.y) < 16) handleTap(point);
-});
+}
 
-wxApi.onTouchCancel(() => {
+function onTouchCancel() {
   if (touch?.canvas) nativeCanvas.dispatchEvent(pointerEvent('pointercancel', touch.last));
   touch = null;
-});
+}
+
+wxApi.onTouchStart?.(onTouchStart);
+wxApi.onTouchMove?.(onTouchMove);
+wxApi.onTouchEnd?.(onTouchEnd);
+wxApi.onTouchCancel?.(onTouchCancel);
+nativeCanvas.addEventListener?.('touchstart', onTouchStart);
+nativeCanvas.addEventListener?.('touchmove', onTouchMove);
+nativeCanvas.addEventListener?.('touchend', onTouchEnd);
+nativeCanvas.addEventListener?.('touchcancel', onTouchCancel);
+
+function runDevtoolsTouchTest() {
+  if (!isDevtools) return;
+  const request = wxApi.getStorageSync(DEVTOOLS_TOUCH_KEY);
+  if (!request?.id || request.id === lastTouchTestId || !request.touch) return;
+  lastTouchTestId = request.id;
+  wxApi.removeStorageSync?.(DEVTOOLS_TOUCH_KEY);
+  const event = { touches: [request.touch], changedTouches: [] };
+  onTouchStart(event);
+  onTouchEnd({ touches: [], changedTouches: [request.touch] });
+}
 
 wxApi.onHide(() => {
   document.hidden = true;
@@ -601,6 +643,7 @@ function renderWechatOverlay({ renderer, state, levels }) {
   latestState = state;
   latestLevels = levels;
   ensureOverlay();
+  runDevtoolsTouchTest();
   if (state.over && !previousOver) saveResult(state);
   previousOver = state.over;
 

@@ -27,7 +27,8 @@ test('the platform layer supplies WeChat canvas, storage, touch and lifecycle se
   assert.match(shim, /wxApi\?\.createCanvas\?\.\(\)/);
   assert.match(shim, /__happyJumpPlatform/);
   assert.match(shim, /getStorageSync/);
-  assert.match(shim, /Math\.min\(Number\(info\.pixelRatio \|\| 1\), 1\.5\)/);
+  assert.match(shim, /const pixelRatio = Math\.max\(1, Number\(info\.pixelRatio \|\| 1\)\)/);
+  assert.match(shim, /const ratio = Math\.min\(pixelRatio, 1\.5\)/);
   assert.match(shim, /__happyJumpPlatform\.loadImage/);
   assert.match(shim, /forwardedPointerEvents/);
   assert.match(shim, /nativeCanvas\.addEventListener =/);
@@ -85,14 +86,16 @@ test('the result screen can focus and activate its registered restart control', 
 
 test('physical-device taps accept page coordinates and trigger UI on touch start', async () => {
   const ui = await source('wechat-minigame/src/wechat-ui.mjs');
-  assert.match(ui, /value\.clientX \?\? value\.pageX \?\? value\.x \?\? value\.screenX/);
+  assert.match(ui, /touchPoints\(value/);
+  assert.match(ui, /devicePixelRatio: pixelRatio/);
   assert.match(ui, /if \(uiButton\) \{\s*handleTap\(point\)/);
   assert.match(ui, /active\.handled/);
+  assert.match(ui, /nativeCanvas\.addEventListener\?\.\('touchstart', onTouchStart\)/);
 });
 
 test('the home screen identifies the current physical-device preview build', async () => {
   const ui = await source('wechat-minigame/src/wechat-ui.mjs');
-  assert.match(ui, /BUILD_LABEL = '体验版 0\.3\.3'/);
+  assert.match(ui, /BUILD_LABEL = '体验版 0\.3\.4'/);
   assert.match(ui, /text\(BUILD_LABEL/);
 });
 
@@ -146,5 +149,7 @@ test('developer-tool diagnostics expose runtime state without running on phones'
   assert.match(game, /colors: tiles\.map/);
   assert.match(ui, /isDevtools/);
   assert.match(ui, /happy-jump-devtools-state-v1/);
+  assert.match(ui, /happy-jump-devtools-touch-v1/);
+  assert.match(ui, /runDevtoolsTouchTest\(\)/);
   assert.match(ui, /if \(!isDevtools\) return/);
 });

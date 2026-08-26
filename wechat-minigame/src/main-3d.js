@@ -138,7 +138,8 @@ var info = ((_a = wxApi == null ? void 0 : wxApi.getWindowInfo) == null ? void 0
 };
 var width = Number(info.windowWidth || info.screenWidth || 375);
 var height = Number(info.windowHeight || info.screenHeight || 667);
-var ratio = Math.min(Number(info.pixelRatio || 1), 1.5);
+var pixelRatio = Math.max(1, Number(info.pixelRatio || 1));
+var ratio = Math.min(pixelRatio, 1.5);
 var _a2;
 var nativeCanvas = (_a2 = wxApi == null ? void 0 : wxApi.createCanvas) == null ? void 0 : _a2.call(wxApi);
 var globalListeners = /* @__PURE__ */ new Map();
@@ -334,8 +335,8 @@ var documentShim = {
   documentElement: makeElement("html", "html"),
   hidden: false,
   querySelector(selector) {
-    var _a14;
-    const id = (_a14 = String(selector).match(/^#([\w-]+)/)) == null ? void 0 : _a14[1];
+    var _a23;
+    const id = (_a23 = String(selector).match(/^#([\w-]+)/)) == null ? void 0 : _a23[1];
     return id ? elements.get(id) || makeElement(id) : makeElement("", "div");
   },
   querySelectorAll() {
@@ -352,8 +353,8 @@ var documentShim = {
   }
 };
 var navigatorShim = { maxTouchPoints: 1, vibrate: (duration) => {
-  var _a14;
-  return (_a14 = wxApi == null ? void 0 : wxApi.vibrateShort) == null ? void 0 : _a14.call(wxApi, { type: duration > 10 ? "heavy" : "light" });
+  var _a23;
+  return (_a23 = wxApi == null ? void 0 : wxApi.vibrateShort) == null ? void 0 : _a23.call(wxApi, { type: duration > 10 ? "heavy" : "light" });
 } };
 var performanceShim = globalThis.performance || { now: () => Date.now() };
 var frame = globalThis.requestAnimationFrame || ((callback) => setTimeout(() => callback(performanceShim.now()), 16));
@@ -365,8 +366,8 @@ var SearchParams = class {
     return new RegExp(`(?:^|[?&])${key}(?:=|&|$)`).test(this.query);
   }
   get(key) {
-    var _a14;
-    return ((_a14 = this.query.match(new RegExp(`(?:^|[?&])${key}=([^&]*)`))) == null ? void 0 : _a14[1]) || null;
+    var _a23;
+    return ((_a23 = this.query.match(new RegExp(`(?:^|[?&])${key}=([^&]*)`))) == null ? void 0 : _a23[1]) || null;
   }
 };
 if (!globalThis.AudioContext && (wxApi == null ? void 0 : wxApi.createWebAudioContext)) {
@@ -377,17 +378,17 @@ if (!globalThis.AudioContext && (wxApi == null ? void 0 : wxApi.createWebAudioCo
 }
 var storage = {
   getItem(key) {
-    var _a14;
-    const value = (_a14 = wxApi == null ? void 0 : wxApi.getStorageSync) == null ? void 0 : _a14.call(wxApi, key);
+    var _a23;
+    const value = (_a23 = wxApi == null ? void 0 : wxApi.getStorageSync) == null ? void 0 : _a23.call(wxApi, key);
     return value == null ? null : String(value);
   },
   setItem(key, value) {
-    var _a14;
-    (_a14 = wxApi == null ? void 0 : wxApi.setStorageSync) == null ? void 0 : _a14.call(wxApi, key, String(value));
+    var _a23;
+    (_a23 = wxApi == null ? void 0 : wxApi.setStorageSync) == null ? void 0 : _a23.call(wxApi, key, String(value));
   },
   removeItem(key) {
-    var _a14;
-    (_a14 = wxApi == null ? void 0 : wxApi.removeStorageSync) == null ? void 0 : _a14.call(wxApi, key);
+    var _a23;
+    (_a23 = wxApi == null ? void 0 : wxApi.removeStorageSync) == null ? void 0 : _a23.call(wxApi, key);
   }
 };
 var fileFetch = (wxApi == null ? void 0 : wxApi.getFileSystemManager) ? (filePath) => new Promise((resolve, reject) => {
@@ -16626,7 +16627,7 @@ function WebGLMaterials(renderer2, properties) {
       uniforms.fogDensity.value = fog.density;
     }
   }
-  function refreshMaterialUniforms(uniforms, material, pixelRatio, height2, transmissionRenderTarget) {
+  function refreshMaterialUniforms(uniforms, material, pixelRatio2, height2, transmissionRenderTarget) {
     if (material.isMeshBasicMaterial) {
       refreshUniformsCommon(uniforms, material);
     } else if (material.isMeshLambertMaterial) {
@@ -16659,7 +16660,7 @@ function WebGLMaterials(renderer2, properties) {
         refreshUniformsDash(uniforms, material);
       }
     } else if (material.isPointsMaterial) {
-      refreshUniformsPoints(uniforms, material, pixelRatio, height2);
+      refreshUniformsPoints(uniforms, material, pixelRatio2, height2);
     } else if (material.isSpriteMaterial) {
       refreshUniformsSprites(uniforms, material);
     } else if (material.isShadowMaterial) {
@@ -16762,10 +16763,10 @@ function WebGLMaterials(renderer2, properties) {
     uniforms.totalSize.value = material.dashSize + material.gapSize;
     uniforms.scale.value = material.scale;
   }
-  function refreshUniformsPoints(uniforms, material, pixelRatio, height2) {
+  function refreshUniformsPoints(uniforms, material, pixelRatio2, height2) {
     uniforms.diffuse.value.copy(material.color);
     uniforms.opacity.value = material.opacity;
-    uniforms.size.value = material.size * pixelRatio;
+    uniforms.size.value = material.size * pixelRatio2;
     uniforms.scale.value = height2 * 0.5;
     if (material.map) {
       uniforms.map.value = material.map;
@@ -17335,12 +17336,12 @@ var WebGLRenderer = class {
     this.getDrawingBufferSize = function(target) {
       return target.set(_width * _pixelRatio, _height * _pixelRatio).floor();
     };
-    this.setDrawingBufferSize = function(width2, height2, pixelRatio) {
+    this.setDrawingBufferSize = function(width2, height2, pixelRatio2) {
       _width = width2;
       _height = height2;
-      _pixelRatio = pixelRatio;
-      canvas.width = Math.floor(width2 * pixelRatio);
-      canvas.height = Math.floor(height2 * pixelRatio);
+      _pixelRatio = pixelRatio2;
+      canvas.width = Math.floor(width2 * pixelRatio2);
+      canvas.height = Math.floor(height2 * pixelRatio2);
       this.setViewport(0, 0, width2, height2);
     };
     this.getCurrentViewport = function(target) {
@@ -22187,10 +22188,10 @@ function sanitizeDisplayName(value) {
   return String(value != null ? value : "").replace(/<[^>]*>/g, "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 20);
 }
 function normalizeLeaderboardEntry(row) {
-  var _a14;
+  var _a23;
   const profile = Array.isArray(row == null ? void 0 : row.profiles) ? row.profiles[0] : row == null ? void 0 : row.profiles;
   return {
-    userId: String((_a14 = row == null ? void 0 : row.user_id) != null ? _a14 : ""),
+    userId: String((_a23 = row == null ? void 0 : row.user_id) != null ? _a23 : ""),
     displayName: sanitizeDisplayName(profile == null ? void 0 : profile.display_name) || "\u795E\u79D8\u73A9\u5BB6",
     score: Math.max(0, Math.floor(Number(row == null ? void 0 : row.best_score) || 0)),
     level: Math.max(1, Math.floor(Number(row == null ? void 0 : row.best_level) || 1)),
@@ -22223,12 +22224,12 @@ var CloudLeaderboardService = class {
     return Boolean(this.url && this.anonKey && this.fetch);
   }
   get user() {
-    var _a14;
-    return ((_a14 = this.session) == null ? void 0 : _a14.user) || null;
+    var _a23;
+    return ((_a23 = this.session) == null ? void 0 : _a23.user) || null;
   }
   get displayName() {
-    var _a14, _b4, _c;
-    return sanitizeDisplayName(((_a14 = this.profile) == null ? void 0 : _a14.display_name) || ((_c = (_b4 = this.user) == null ? void 0 : _b4.user_metadata) == null ? void 0 : _c.display_name)) || null;
+    var _a23, _b9, _c;
+    return sanitizeDisplayName(((_a23 = this.profile) == null ? void 0 : _a23.display_name) || ((_c = (_b9 = this.user) == null ? void 0 : _b9.user_metadata) == null ? void 0 : _c.display_name)) || null;
   }
   subscribe(listener) {
     this.listeners.add(listener);
@@ -22238,7 +22239,7 @@ var CloudLeaderboardService = class {
     const snapshot = { enabled: this.enabled, user: this.user, profile: this.profile, displayName: this.displayName };
     for (const listener of this.listeners) listener(snapshot);
   }
-  authHeaders(accessToken = ((_a14) => (_a14 = this.session) == null ? void 0 : _a14.access_token)()) {
+  authHeaders(accessToken = ((_a23) => (_a23 = this.session) == null ? void 0 : _a23.access_token)()) {
     return {
       apikey: this.anonKey,
       Authorization: `Bearer ${accessToken || this.anonKey}`,
@@ -22246,31 +22247,31 @@ var CloudLeaderboardService = class {
     };
   }
   async request(path, { method = "GET", body: body2, accessToken, headers = {} } = {}) {
-    var _a14, _b4;
+    var _a23, _b9;
     if (!this.enabled) throw new Error("\u4E91\u7AEF\u6392\u884C\u699C\u5C1A\u672A\u914D\u7F6E");
     const response = await this.fetch(`${this.url}${path}`, {
       method,
       headers: { ...this.authHeaders(accessToken), ...headers },
       body: body2 === void 0 ? void 0 : JSON.stringify(body2)
     });
-    const contentType = ((_b4 = (_a14 = response.headers) == null ? void 0 : _a14.get) == null ? void 0 : _b4.call(_a14, "content-type")) || "";
+    const contentType = ((_b9 = (_a23 = response.headers) == null ? void 0 : _a23.get) == null ? void 0 : _b9.call(_a23, "content-type")) || "";
     const payload = contentType.includes("json") ? await response.json() : await response.text();
     if (!response.ok) throw new Error(messageFromPayload(payload, `\u8BF7\u6C42\u5931\u8D25 (${response.status})`));
     return payload;
   }
   persistSession(session) {
-    var _a14, _b4;
+    var _a23, _b9;
     this.session = (session == null ? void 0 : session.access_token) ? session : null;
     try {
-      if (this.session) (_a14 = this.storage) == null ? void 0 : _a14.setItem(SESSION_STORAGE_KEY, JSON.stringify(this.session));
-      else (_b4 = this.storage) == null ? void 0 : _b4.removeItem(SESSION_STORAGE_KEY);
+      if (this.session) (_a23 = this.storage) == null ? void 0 : _a23.setItem(SESSION_STORAGE_KEY, JSON.stringify(this.session));
+      else (_b9 = this.storage) == null ? void 0 : _b9.removeItem(SESSION_STORAGE_KEY);
     } catch (e) {
     }
   }
   readStoredSession() {
-    var _a14;
+    var _a23;
     try {
-      const value = JSON.parse(((_a14 = this.storage) == null ? void 0 : _a14.getItem(SESSION_STORAGE_KEY)) || "null");
+      const value = JSON.parse(((_a23 = this.storage) == null ? void 0 : _a23.getItem(SESSION_STORAGE_KEY)) || "null");
       return (value == null ? void 0 : value.access_token) && (value == null ? void 0 : value.refresh_token) ? value : null;
     } catch (e) {
       return null;
@@ -22301,8 +22302,8 @@ var CloudLeaderboardService = class {
     }
   }
   async refreshSession() {
-    var _a14;
-    if (!((_a14 = this.session) == null ? void 0 : _a14.refresh_token)) throw new Error("\u767B\u5F55\u5DF2\u5931\u6548\uFF0C\u8BF7\u91CD\u65B0\u767B\u5F55");
+    var _a23;
+    if (!((_a23 = this.session) == null ? void 0 : _a23.refresh_token)) throw new Error("\u767B\u5F55\u5DF2\u5931\u6548\uFF0C\u8BF7\u91CD\u65B0\u767B\u5F55");
     const session = await this.request("/auth/v1/token?grant_type=refresh_token", {
       method: "POST",
       accessToken: this.anonKey,
@@ -22339,8 +22340,8 @@ var CloudLeaderboardService = class {
     return session;
   }
   async signOut() {
-    var _a14;
-    const accessToken = (_a14 = this.session) == null ? void 0 : _a14.access_token;
+    var _a23;
+    const accessToken = (_a23 = this.session) == null ? void 0 : _a23.access_token;
     try {
       if (accessToken) await this.request("/auth/v1/logout", { method: "POST", accessToken });
     } catch (e) {
@@ -22351,8 +22352,8 @@ var CloudLeaderboardService = class {
     }
   }
   async loadProfile() {
-    var _a14;
-    if (!((_a14 = this.user) == null ? void 0 : _a14.id)) return null;
+    var _a23;
+    if (!((_a23 = this.user) == null ? void 0 : _a23.id)) return null;
     const rows = await this.request(`/rest/v1/profiles?select=user_id,display_name&user_id=eq.${encodeURIComponent(this.user.id)}&limit=1`);
     this.profile = Array.isArray(rows) ? rows[0] || null : null;
     return this.profile;
@@ -22363,8 +22364,8 @@ var CloudLeaderboardService = class {
     return (Array.isArray(rows) ? rows : []).map(normalizeLeaderboardEntry);
   }
   async getMyBest() {
-    var _a14;
-    if (!((_a14 = this.user) == null ? void 0 : _a14.id)) return null;
+    var _a23;
+    if (!((_a23 = this.user) == null ? void 0 : _a23.id)) return null;
     const rows = await this.request(`/rest/v1/leaderboard_entries?select=user_id,best_score,best_level,won,games_played,updated_at,profiles(display_name)&user_id=eq.${encodeURIComponent(this.user.id)}&limit=1`);
     return (rows == null ? void 0 : rows[0]) ? normalizeLeaderboardEntry(rows[0]) : null;
   }
@@ -22538,9 +22539,9 @@ tutorialUi.next.addEventListener("click", () => {
   else setTutorialStep(tutorialStep + 1);
 });
 tutorialUi.visual.addEventListener("pointerdown", (event) => {
-  var _a14, _b4;
+  var _a23, _b9;
   tutorialPointerStart = { id: event.pointerId, x: event.clientX };
-  (_b4 = (_a14 = tutorialUi.visual).setPointerCapture) == null ? void 0 : _b4.call(_a14, event.pointerId);
+  (_b9 = (_a23 = tutorialUi.visual).setPointerCapture) == null ? void 0 : _b9.call(_a23, event.pointerId);
 });
 tutorialUi.visual.addEventListener("pointerup", (event) => {
   if (!tutorialPointerStart || tutorialPointerStart.id !== event.pointerId) return;
@@ -22648,8 +22649,8 @@ function setMaterialBaseColor(material, color) {
   material.color.copy(color);
 }
 function setMaterialGlow(material, color, intensity) {
-  var _a14;
-  if ((_a14 = material.emissive) == null ? void 0 : _a14.isColor) {
+  var _a23;
+  if ((_a23 = material.emissive) == null ? void 0 : _a23.isColor) {
     material.emissive.setHex(color);
     material.emissiveIntensity = intensity;
     return;
@@ -22659,8 +22660,8 @@ function setMaterialGlow(material, color, intensity) {
   refreshFallbackMaterial(material);
 }
 function setMaterialGlowIntensity(material, intensity) {
-  var _a14;
-  if ((_a14 = material.emissive) == null ? void 0 : _a14.isColor) {
+  var _a23;
+  if ((_a23 = material.emissive) == null ? void 0 : _a23.isColor) {
     material.emissiveIntensity = intensity;
     return;
   }
@@ -23031,7 +23032,7 @@ function cancelScheduled() {
   scheduledTimers.clear();
 }
 function ensureAudio() {
-  var _a14;
+  var _a23;
   const AudioContextClass = window2.AudioContext || window2.webkitAudioContext;
   if (!AudioContextClass) {
     state.sound = false;
@@ -23039,7 +23040,7 @@ function ensureAudio() {
     return null;
   }
   try {
-    (_a14 = state.audio) != null ? _a14 : state.audio = new AudioContextClass();
+    (_a23 = state.audio) != null ? _a23 : state.audio = new AudioContextClass();
   } catch (e) {
     state.sound = false;
     state.mixAudioStatus = "unavailable";
@@ -23099,7 +23100,7 @@ function loadMixAudio(context2) {
   return state.mixAudioLoad;
 }
 function playMixCue(name, { delay = 0, playbackRate = 1 } = {}) {
-  var _a14, _b4;
+  var _a23, _b9;
   const buffer = state.mixAudioBuffers[name];
   if (!state.sound || !buffer) return false;
   const context2 = ensureAudio();
@@ -23108,8 +23109,8 @@ function playMixCue(name, { delay = 0, playbackRate = 1 } = {}) {
   const gain = context2.createGain();
   source.buffer = buffer;
   source.playbackRate.value = playbackRate;
-  gain.gain.value = (_a14 = MIX_CUE_GAINS[name]) != null ? _a14 : 0.42;
-  source.connect(gain).connect((_b4 = state.sfxBus) != null ? _b4 : state.audioOutput);
+  gain.gain.value = (_a23 = MIX_CUE_GAINS[name]) != null ? _a23 : 0.42;
+  source.connect(gain).connect((_b9 = state.sfxBus) != null ? _b9 : state.audioOutput);
   state.activeMixSources.add(source);
   source.onended = () => {
     state.activeMixSources.delete(source);
@@ -23151,8 +23152,8 @@ function startSampledMusic() {
   return true;
 }
 function syncAudioState() {
-  var _a14, _b4;
-  document2.documentElement.dataset.audioState = (_b4 = (_a14 = state.audio) == null ? void 0 : _a14.state) != null ? _b4 : "not-started";
+  var _a23, _b9;
+  document2.documentElement.dataset.audioState = (_b9 = (_a23 = state.audio) == null ? void 0 : _a23.state) != null ? _b9 : "not-started";
   document2.documentElement.dataset.musicStyle = "bouncy-party-loop";
   document2.documentElement.dataset.musicPulse = "128bpm-eighth-note";
   document2.documentElement.dataset.audioMix = "bouncy-party-hop-v92";
@@ -23171,7 +23172,7 @@ function syncAudioState() {
   if (soundIcon) soundIcon.src = state.sound ? "assets/ui-sound-on.png" : "assets/ui-sound-off.png";
 }
 function voice({ from, to, duration, volume, delay = 0, type = "sine", peak = null, at = null, destination = null, attack = 0.012 }) {
-  var _a14;
+  var _a23;
   const context2 = ensureAudio();
   if (!context2) return;
   const start = at != null ? at : context2.currentTime + delay;
@@ -23187,7 +23188,7 @@ function voice({ from, to, duration, volume, delay = 0, type = "sine", peak = nu
   gain.gain.setValueAtTime(1e-4, start);
   gain.gain.exponentialRampToValueAtTime(volume, start + Math.min(attack, duration * 0.62));
   gain.gain.exponentialRampToValueAtTime(1e-4, end);
-  oscillator.connect(gain).connect((_a14 = destination != null ? destination : state.sfxBus) != null ? _a14 : state.audioOutput);
+  oscillator.connect(gain).connect((_a23 = destination != null ? destination : state.sfxBus) != null ? _a23 : state.audioOutput);
   oscillator.start(start);
   oscillator.stop(end + 0.02);
 }
@@ -23203,7 +23204,7 @@ function ensureNoiseBuffer(context2) {
   return state.noiseBuffer;
 }
 function noisePuff(duration = 0.12, volume = 0.018, frequency = 900, delay = 0) {
-  var _a14;
+  var _a23;
   const context2 = ensureAudio();
   if (!context2) return;
   ensureNoiseBuffer(context2);
@@ -23219,11 +23220,11 @@ function noisePuff(duration = 0.12, volume = 0.018, frequency = 900, delay = 0) 
   gain.gain.setValueAtTime(1e-4, start);
   gain.gain.exponentialRampToValueAtTime(volume, start + 8e-3);
   gain.gain.exponentialRampToValueAtTime(1e-4, start + duration);
-  source.connect(filter).connect(gain).connect((_a14 = state.sfxBus) != null ? _a14 : state.audioOutput);
+  source.connect(filter).connect(gain).connect((_a23 = state.sfxBus) != null ? _a23 : state.audioOutput);
   source.start(start, Math.random() * 0.16, duration);
 }
 function noiseSnap(duration = 0.065, volume = 0.012, frequency = 4300, delay = 0) {
-  var _a14;
+  var _a23;
   const context2 = ensureAudio();
   if (!context2) return;
   ensureNoiseBuffer(context2);
@@ -23239,7 +23240,7 @@ function noiseSnap(duration = 0.065, volume = 0.012, frequency = 4300, delay = 0
   gain.gain.setValueAtTime(1e-4, start);
   gain.gain.exponentialRampToValueAtTime(volume, start + 25e-4);
   gain.gain.exponentialRampToValueAtTime(1e-4, start + duration);
-  source.connect(filter).connect(gain).connect((_a14 = state.sfxBus) != null ? _a14 : state.audioOutput);
+  source.connect(filter).connect(gain).connect((_a23 = state.sfxBus) != null ? _a23 : state.audioOutput);
   source.start(start, Math.random() * 0.18, duration);
 }
 function playHopBeat() {
@@ -23248,7 +23249,7 @@ function playHopBeat() {
   noisePuff(0.038, 18e-4, 680);
 }
 function sfx(name, detail = {}) {
-  var _a14, _b4, _c, _d, _e, _f, _g, _h, _i;
+  var _a23, _b9, _c, _d, _e, _f, _g, _h, _i;
   if (!state.sound) return;
   state.audioEvents.push({ name, at: Math.round(performance2.now()), ...detail });
   if (state.audioEvents.length > 32) state.audioEvents.shift();
@@ -23262,12 +23263,12 @@ function sfx(name, detail = {}) {
   } else if (name === "collect") {
     [760, 1050, 1480].forEach((note, index) => voice({ from: note, to: note * 1.08, duration: 0.13, volume: 0.025 - index * 3e-3, delay: index * 0.048, type: index === 1 ? "triangle" : "sine" }));
   } else if (name === "ignite" || name === "warn") {
-    const pitch = 1 + ((_a14 = detail.chain) != null ? _a14 : 0) * 0.075;
+    const pitch = 1 + ((_a23 = detail.chain) != null ? _a23 : 0) * 0.075;
     voice({ from: 560 * pitch, peak: 1080 * pitch, to: 760 * pitch, duration: 0.15, volume: 0.034, type: "sine" });
     voice({ from: 1140 * pitch, to: 820 * pitch, duration: 0.105, volume: 0.016, delay: 0.032, type: "triangle" });
     noiseSnap(0.045, 6e-3, 5100 * pitch, 0.018);
   } else if (name === "tick") {
-    const pitch = 1 + ((_b4 = detail.chain) != null ? _b4 : 0) * 0.075;
+    const pitch = 1 + ((_b9 = detail.chain) != null ? _b9 : 0) * 0.075;
     const note = (930 + ((_c = detail.step) != null ? _c : 0) * 105) * pitch;
     voice({ from: note * 0.82, peak: note * 1.16, to: note, duration: 0.052, volume: 0.017, type: "triangle" });
     voice({ from: note * 1.52, to: note * 1.27, duration: 0.038, volume: 7e-3, delay: 4e-3 });
@@ -23499,9 +23500,9 @@ function savePendingScores(entries) {
   }
 }
 function queuePendingScore(entry) {
-  var _a14;
+  var _a23;
   const entries = readPendingScores();
-  entries.push({ ...entry, userId: ((_a14 = cloudLeaderboard.user) == null ? void 0 : _a14.id) || null });
+  entries.push({ ...entry, userId: ((_a23 = cloudLeaderboard.user) == null ? void 0 : _a23.id) || null });
   savePendingScores(entries);
 }
 function setLeaderboardStatus(text2) {
@@ -23521,7 +23522,7 @@ function renderLeaderboard(entries, { cloud: cloud2 = false } = {}) {
     return;
   }
   ui.leaderboard.replaceChildren(...visibleEntries.map((entry, index) => {
-    var _a14;
+    var _a23;
     const item = document2.createElement("li");
     const rank = document2.createElement("span");
     const player2 = document2.createElement("strong");
@@ -23529,7 +23530,7 @@ function renderLeaderboard(entries, { cloud: cloud2 = false } = {}) {
     rank.textContent = `#${index + 1}`;
     player2.textContent = `${entry.displayName || "\u672C\u673A\u73A9\u5BB6"} \xB7 \u7B2C${entry.level}\u5C42`;
     score.textContent = `${Math.max(0, Math.floor(entry.score))} \u5206`;
-    if (cloud2 && entry.userId && entry.userId === ((_a14 = cloudLeaderboard.user) == null ? void 0 : _a14.id)) item.classList.add("is-player");
+    if (cloud2 && entry.userId && entry.userId === ((_a23 = cloudLeaderboard.user) == null ? void 0 : _a23.id)) item.classList.add("is-player");
     item.append(rank, player2, score);
     return item;
   }));
@@ -23612,11 +23613,11 @@ function setAccountStatus(text2, isError = false) {
   ui.accountStatus.classList.toggle("is-error", isError);
 }
 function setAccountMode(mode) {
-  var _a14, _b4;
+  var _a23, _b9;
   accountMode = mode === "sign-up" ? "sign-up" : "sign-in";
   const signingUp = accountMode === "sign-up";
-  (_a14 = ui.accountSignInMode) == null ? void 0 : _a14.setAttribute("aria-selected", String(!signingUp));
-  (_b4 = ui.accountSignUpMode) == null ? void 0 : _b4.setAttribute("aria-selected", String(signingUp));
+  (_a23 = ui.accountSignInMode) == null ? void 0 : _a23.setAttribute("aria-selected", String(!signingUp));
+  (_b9 = ui.accountSignUpMode) == null ? void 0 : _b9.setAttribute("aria-selected", String(signingUp));
   if (ui.displayNameField) ui.displayNameField.hidden = !signingUp;
   if (ui.accountDisplayName) ui.accountDisplayName.required = signingUp;
   if (ui.accountPassword) ui.accountPassword.autocomplete = signingUp ? "new-password" : "current-password";
@@ -23624,7 +23625,7 @@ function setAccountMode(mode) {
   setAccountStatus("");
 }
 function updateAccountUi() {
-  var _a14;
+  var _a23;
   const enabled = cloudLeaderboard.enabled;
   document2.querySelectorAll(".cloud-only").forEach((element) => {
     element.hidden = !enabled;
@@ -23638,24 +23639,24 @@ function updateAccountUi() {
   if (ui.accountSignedOut) ui.accountSignedOut.hidden = signedIn;
   if (ui.accountSignedIn) ui.accountSignedIn.hidden = !signedIn;
   if (ui.accountPlayerName) ui.accountPlayerName.textContent = name;
-  if (ui.accountPlayerEmail) ui.accountPlayerEmail.textContent = ((_a14 = cloudLeaderboard.user) == null ? void 0 : _a14.email) || "";
+  if (ui.accountPlayerEmail) ui.accountPlayerEmail.textContent = ((_a23 = cloudLeaderboard.user) == null ? void 0 : _a23.email) || "";
 }
 function openAccountDialog(event) {
-  var _a14;
+  var _a23;
   if (!cloudLeaderboard.enabled || !ui.accountDialog) return;
   lastAccountTrigger = (event == null ? void 0 : event.currentTarget) || document2.activeElement;
   updateAccountUi();
   setAccountStatus("");
   ui.accountDialog.hidden = false;
-  (_a14 = cloudLeaderboard.user ? ui.accountSignOut : ui.accountEmail) == null ? void 0 : _a14.focus({ preventScroll: true });
+  (_a23 = cloudLeaderboard.user ? ui.accountSignOut : ui.accountEmail) == null ? void 0 : _a23.focus({ preventScroll: true });
   if (cloudLeaderboard.user) void updateAccountBest().catch(() => {
   });
 }
 function closeAccountDialog() {
-  var _a14;
+  var _a23;
   if (!ui.accountDialog || ui.accountDialog.hidden) return;
   ui.accountDialog.hidden = true;
-  (_a14 = lastAccountTrigger == null ? void 0 : lastAccountTrigger.focus) == null ? void 0 : _a14.call(lastAccountTrigger, { preventScroll: true });
+  (_a23 = lastAccountTrigger == null ? void 0 : lastAccountTrigger.focus) == null ? void 0 : _a23.call(lastAccountTrigger, { preventScroll: true });
 }
 async function initializeCloudLeaderboard() {
   renderLeaderboard(readLeaderboard());
@@ -23740,7 +23741,7 @@ function takeNextColor() {
   return color;
 }
 function refreshHud() {
-  var _a14, _b4;
+  var _a23, _b9;
   ui.level.textContent = state.level + 1;
   ui.score.textContent = state.score.toString().padStart(6, "0");
   ui.timer.textContent = Math.max(0, Math.ceil(state.time));
@@ -23775,7 +23776,7 @@ function refreshHud() {
     locked: state.locked,
     pendingLevelComplete: state.pendingLevelComplete,
     sound: state.sound,
-    audioState: (_b4 = (_a14 = state.audio) == null ? void 0 : _a14.state) != null ? _b4 : "not-started",
+    audioState: (_b9 = (_a23 = state.audio) == null ? void 0 : _a23.state) != null ? _b9 : "not-started",
     musicStyle: "bouncy-party-loop",
     musicPulse: "128bpm-eighth-note",
     audioMix: "bouncy-party-hop-v92",
@@ -24029,18 +24030,18 @@ function hopTo(rowDelta, colDelta, silentStart = false) {
   return true;
 }
 function requestMove(rowDelta, colDelta, haptic = false, silentStart = false) {
-  var _a14, _b4;
+  var _a23, _b9;
   if (!state.running || state.paused || state.locked || state.falling) return false;
   if (state.hop || !state.grounded || !state.currentTile) {
     if (state.hop) {
       state.queuedMove = [rowDelta, colDelta];
-      if (haptic) (_a14 = navigator2.vibrate) == null ? void 0 : _a14.call(navigator2, 8);
+      if (haptic) (_a23 = navigator2.vibrate) == null ? void 0 : _a23.call(navigator2, 8);
       return true;
     }
     return false;
   }
   const accepted = hopTo(rowDelta, colDelta, silentStart);
-  if (accepted && haptic) (_b4 = navigator2.vibrate) == null ? void 0 : _b4.call(navigator2, 12);
+  if (accepted && haptic) (_b9 = navigator2.vibrate) == null ? void 0 : _b9.call(navigator2, 12);
   return accepted;
 }
 function keepEscapeTile(group) {
@@ -24328,11 +24329,11 @@ function moveForSwipe(deltaX, deltaY) {
   return best.move;
 }
 renderer.domElement.addEventListener("pointerdown", (event) => {
-  var _a14, _b4;
+  var _a23, _b9;
   const swipeEnabled = event.pointerType === "touch" || innerWidth < 760;
   pointerStart = { x: event.clientX, y: event.clientY, id: event.pointerId, swipeEnabled, moved: false, move: null, nextMoveAt: 0 };
   if (swipeEnabled) {
-    (_b4 = (_a14 = renderer.domElement).setPointerCapture) == null ? void 0 : _b4.call(_a14, event.pointerId);
+    (_b9 = (_a23 = renderer.domElement).setPointerCapture) == null ? void 0 : _b9.call(_a23, event.pointerId);
     updateSwipePad(event.clientX, event.clientY);
     swipePad.classList.add("show");
   }
@@ -24671,8 +24672,8 @@ function updateShockwaves(delta) {
   }
 }
 function updateWarningBeacon(elapsed) {
-  var _a14;
-  const danger = state.grounded && ((_a14 = state.currentTile) == null ? void 0 : _a14.userData.state) === "warn";
+  var _a23;
+  const danger = state.grounded && ((_a23 = state.currentTile) == null ? void 0 : _a23.userData.state) === "warn";
   warningBeacon.visible = Boolean(danger);
   if (!danger) return;
   warningBeacon.position.set(player.position.x, player.position.y + 2.2 + Math.sin(elapsed * 8) * 0.08, player.position.z);
@@ -24680,9 +24681,9 @@ function updateWarningBeacon(elapsed) {
   warningRing.scale.setScalar(1 + Math.sin(elapsed * 8) * 0.08);
 }
 function beginLevelTransitionWhenSafe() {
-  var _a14;
+  var _a23;
   if (!state.pendingLevelComplete || state.transitionTimer > 0 || state.levelResultOpen || state.over) return;
-  const currentState = (_a14 = state.currentTile) == null ? void 0 : _a14.userData.state;
+  const currentState = (_a23 = state.currentTile) == null ? void 0 : _a23.userData.state;
   const playerInDanger = currentState === "warn" || currentState === "bursting";
   if (playerInDanger || state.hop || state.falling || !state.grounded) return;
   state.pendingLevelComplete = false;
@@ -24692,7 +24693,7 @@ function beginLevelTransitionWhenSafe() {
   sfx("levelClear");
 }
 function update(delta, elapsed) {
-  var _a14, _b4;
+  var _a23, _b9;
   if (state.paused) return;
   if (state.hitStop > 0) {
     state.hitStop = Math.max(0, state.hitStop - delta);
@@ -24736,7 +24737,7 @@ function update(delta, elapsed) {
   }
   updateParticles(delta);
   updateShockwaves(delta);
-  const shadowY = (_b4 = (_a14 = state.currentTile) == null ? void 0 : _a14.position.y) != null ? _b4 : -0.45;
+  const shadowY = (_b9 = (_a23 = state.currentTile) == null ? void 0 : _a23.position.y) != null ? _b9 : -0.45;
   playerShadow.position.set(player.position.x, shadowY + 0.43, player.position.z);
   playerShadow.material.opacity = state.falling ? 0 : Math.max(0.05, 0.28 - Math.max(0, player.position.y - shadowY) * 0.045);
 }
@@ -24763,14 +24764,14 @@ function updateCamera(delta) {
 }
 var clock = new Clock();
 function loop() {
-  var _a14;
+  var _a23;
   requestAnimationFrame(loop);
   const delta = Math.min(clock.getDelta(), 0.034);
   const elapsed = clock.elapsedTime;
   update(delta, elapsed);
   updateCamera(delta);
   renderer.render(scene, camera);
-  (_a14 = globalThis.__happyJumpAfterRender) == null ? void 0 : _a14.call(globalThis, { renderer, scene, camera, state, levels: LEVELS });
+  (_a23 = globalThis.__happyJumpAfterRender) == null ? void 0 : _a23.call(globalThis, { renderer, scene, camera, state, levels: LEVELS });
 }
 loop();
 var _a5;
@@ -24851,8 +24852,8 @@ $("#sound").addEventListener("click", (event) => {
   syncAudioState();
 });
 addEventListener("pointerdown", () => {
-  var _a14;
-  if (state.sound && ((_a14 = state.audio) == null ? void 0 : _a14.state) === "suspended") state.audio.resume();
+  var _a23;
+  if (state.sound && ((_a23 = state.audio) == null ? void 0 : _a23.state) === "suspended") state.audio.resume();
 }, { passive: true });
 addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
@@ -24862,7 +24863,7 @@ addEventListener("resize", () => {
 window2.__bounceGrid = {
   roundsForTileCount,
   getState: () => {
-    var _a14, _b4;
+    var _a23, _b9;
     return {
       running: state.running,
       over: state.over,
@@ -24901,7 +24902,7 @@ window2.__bounceGrid = {
       levelBestChain: state.levelBestChain,
       sound: state.sound,
       inputMode: innerWidth <= 900 ? "swipe" : "keyboard-click-or-swipe",
-      audioState: (_b4 = (_a14 = state.audio) == null ? void 0 : _a14.state) != null ? _b4 : "not-started",
+      audioState: (_b9 = (_a23 = state.audio) == null ? void 0 : _a23.state) != null ? _b9 : "not-started",
       musicStyle: "bouncy-party-loop",
       musicPulse: "128bpm-eighth-note",
       audioMix: "bouncy-party-hop-v92",
@@ -24948,6 +24949,62 @@ void initializeCloudLeaderboard();
 // src/wechat-ui.mjs
 var import_config = __toESM(require_config(), 1);
 var import_cloud_leaderboard = __toESM(require_cloud_leaderboard(), 1);
+
+// src/touch-coordinates.mjs
+function finiteNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+function addCandidate(result, seen, x, y, source, scale, offsetY, width2, height2) {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+  if (x < -4 || y < -4 || x > width2 + 4 || y > height2 + 4) return;
+  const key = `${Math.round(x * 10)}:${Math.round(y * 10)}`;
+  if (seen.has(key)) return;
+  seen.add(key);
+  result.push({ x, y, source, scale, offsetY });
+}
+function touchPoints(value, metrics) {
+  if (!value) return [];
+  const width2 = Math.max(1, Number(metrics == null ? void 0 : metrics.width) || 1);
+  const height2 = Math.max(1, Number(metrics == null ? void 0 : metrics.height) || 1);
+  const renderRatio = Math.max(1, Number(metrics == null ? void 0 : metrics.renderRatio) || 1);
+  const devicePixelRatio2 = Math.max(1, Number(metrics == null ? void 0 : metrics.devicePixelRatio) || renderRatio);
+  const screenTop = Math.max(0, Number(metrics == null ? void 0 : metrics.screenTop) || 0);
+  const scales = [.../* @__PURE__ */ new Set([1, renderRatio, devicePixelRatio2])];
+  const sources = [
+    ["client", "clientX", "clientY", false],
+    ["page", "pageX", "pageY", false],
+    ["xy", "x", "y", false],
+    ["screen", "screenX", "screenY", true],
+    ["raw", "rawX", "rawY", false]
+  ];
+  const result = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const [source, xKey, yKey, screenCoordinates] of sources) {
+    const rawX = finiteNumber(value[xKey]);
+    const rawY = finiteNumber(value[yKey]);
+    if (rawX === null || rawY === null) continue;
+    for (const scale of scales) {
+      const offsets = screenCoordinates && screenTop > 0 ? [screenTop * scale, screenTop, 0] : [0];
+      for (const offsetY of offsets) {
+        addCandidate(
+          result,
+          seen,
+          rawX / scale,
+          (rawY - offsetY) / scale,
+          source,
+          scale,
+          offsetY,
+          width2,
+          height2
+        );
+      }
+    }
+  }
+  return result;
+}
+
+// src/wechat-ui.mjs
 var { WechatLeaderboard } = import_cloud_leaderboard.default;
 var wxApi2 = globalThis.wx;
 var document3 = globalThis.__happyJumpPlatform.document;
@@ -24955,8 +25012,11 @@ var board = globalThis.__bounceGrid;
 var cloud = new WechatLeaderboard(wxApi2, import_config.default);
 var _a13, _b3;
 var deviceInfo = ((_a13 = wxApi2.getDeviceInfo) == null ? void 0 : _a13.call(wxApi2)) || ((_b3 = wxApi2.getSystemInfoSync) == null ? void 0 : _b3.call(wxApi2)) || {};
+var _a14, _b4;
+var windowInfo = ((_a14 = wxApi2.getWindowInfo) == null ? void 0 : _a14.call(wxApi2)) || ((_b4 = wxApi2.getSystemInfoSync) == null ? void 0 : _b4.call(wxApi2)) || {};
 var isDevtools = deviceInfo.platform === "devtools" || deviceInfo.brand === "devtools";
 var DEVTOOLS_STATE_KEY = "happy-jump-devtools-state-v1";
+var DEVTOOLS_TOUCH_KEY = "happy-jump-devtools-touch-v1";
 var uiCanvas = wxApi2.createCanvas();
 uiCanvas.width = Math.max(1, Math.floor(width * ratio));
 uiCanvas.height = Math.max(1, Math.floor(height * ratio));
@@ -24973,7 +25033,7 @@ var THEME = Object.freeze({
   alert: "#c97762"
 });
 var LOCAL_BEST_KEY = "happy-jump-wechat-local-best-v2";
-var BUILD_LABEL = "\u4F53\u9A8C\u7248 0.3.3";
+var BUILD_LABEL = "\u4F53\u9A8C\u7248 0.3.4";
 var art = {};
 var buttons = {};
 var leaderboardState = {
@@ -24994,6 +25054,8 @@ var lastSignature = "";
 var lastDraw = 0;
 var userInfoButton = null;
 var touchDebug = null;
+var recentTouch = null;
+var lastTouchTestId = null;
 function loadArt(name, source) {
   const image = wxApi2.createImage();
   image.onload = () => {
@@ -25113,8 +25175,8 @@ function drawHome() {
   syncProfileButton(x + w - 150, y + 14, 132, 28);
 }
 function drawHud(state2, levels) {
-  var _a14, _b4, _c;
-  const top = Math.max(10, Number(((_b4 = (_a14 = wxApi2.getMenuButtonBoundingClientRect) == null ? void 0 : _a14.call(wxApi2)) == null ? void 0 : _b4.bottom) || 0) + 5);
+  var _a23, _b9, _c;
+  const top = Math.max(10, Number(((_b9 = (_a23 = wxApi2.getMenuButtonBoundingClientRect) == null ? void 0 : _a23.call(wxApi2)) == null ? void 0 : _b9.bottom) || 0) + 5);
   const x = 10;
   const w = width - 20;
   panel(x, top, w, 82, "rgba(245,241,231,0.92)", 24);
@@ -25162,7 +25224,7 @@ function modalBase() {
   return { x, y, w, h };
 }
 function drawLevelResult(state2, levels) {
-  var _a14;
+  var _a23;
   drawHud(state2, levels);
   const { x, y, w, h } = modalBase();
   const final = state2.level === state2.levels;
@@ -25174,7 +25236,7 @@ function drawLevelResult(state2, levels) {
     text(label, column, y + 132, 11, THEME.muted, "center");
     text(values[index], column, y + 161, 20, THEME.aquaDark, "center", "700");
   });
-  text(final ? "\u516B\u5C42\u6311\u6218\u5DF2\u7ECF\u5B8C\u6210" : ((_a14 = levels[state2.level]) == null ? void 0 : _a14.name) || "\u4E0B\u4E00\u5C42", width / 2, y + 215, 15, "#58746f", "center");
+  text(final ? "\u516B\u5C42\u6311\u6218\u5DF2\u7ECF\u5B8C\u6210" : ((_a23 = levels[state2.level]) == null ? void 0 : _a23.name) || "\u4E0B\u4E00\u5C42", width / 2, y + 215, 15, "#58746f", "center");
   button("continue", final ? "\u67E5\u770B\u603B\u6210\u7EE9" : "\u8FDB\u5165\u4E0B\u4E00\u5C42", x + 22, y + h - 72, w - 44, 50, true);
   hideProfileButton();
 }
@@ -25256,7 +25318,7 @@ function drawTutorialVisual(step, centerY) {
   fillRect(width / 2 + tile, centerY - tile / 2, tile, tile, THEME.aqua, 15);
 }
 function drawTutorial(state2, levels) {
-  var _a14, _b4;
+  var _a23, _b9;
   drawHud(state2, levels);
   context.fillStyle = "rgba(29,77,78,0.28)";
   context.fillRect(0, 0, width, height);
@@ -25265,7 +25327,7 @@ function drawTutorial(state2, levels) {
   const title = document3.querySelector("#tutorialTitle").textContent || "\u6ED1\u52A8\u8DF3\u8DC3";
   const description = document3.querySelector("#tutorialText").textContent || "\u5411\u4E0A\u4E0B\u5DE6\u53F3\u6ED1\u52A8\uFF0C\u8BA9\u89D2\u8272\u8DF3\u5230\u76F8\u90BB\u65B9\u5757\u3002";
   const step = Math.max(0, Math.min(2, Number(kicker.split("/")[0]) - 1 || 0));
-  const safeTop = Math.max(14, Number(((_b4 = (_a14 = wxApi2.getMenuButtonBoundingClientRect) == null ? void 0 : _a14.call(wxApi2)) == null ? void 0 : _b4.bottom) || 0) + 10);
+  const safeTop = Math.max(14, Number(((_b9 = (_a23 = wxApi2.getMenuButtonBoundingClientRect) == null ? void 0 : _a23.call(wxApi2)) == null ? void 0 : _b9.bottom) || 0) + 10);
   const cardX = 14;
   const cardW = width - 28;
   const cardH = Math.min(192, height * 0.25);
@@ -25311,7 +25373,7 @@ function draw(state2, levels) {
   texture.needsUpdate = true;
 }
 function writeDevtoolsState(state2) {
-  var _a14;
+  var _a23;
   if (!isDevtools) return;
   const tutorial = document3.querySelector("#tutorial");
   const artState = Object.keys(art).reduce((result, name) => {
@@ -25321,7 +25383,7 @@ function writeDevtoolsState(state2) {
   try {
     wxApi2.setStorageSync(DEVTOOLS_STATE_KEY, {
       ...board.getState(),
-      ...(_a14 = board.getDebugState) == null ? void 0 : _a14.call(board),
+      ...(_a23 = board.getDebugState) == null ? void 0 : _a23.call(board),
       screen: screenForState(state2),
       tutorial: tutorial.classList.contains("show") ? {
         step: document3.querySelector("#tutorialKicker").textContent,
@@ -25453,34 +25515,45 @@ function handleTap(point) {
     lastSignature = "";
   }
 }
-function touchPoint(value) {
-  var _a14, _b4, _c, _d, _e, _f;
-  if (!value) return null;
-  let x = Number((_c = (_b4 = (_a14 = value.clientX) != null ? _a14 : value.pageX) != null ? _b4 : value.x) != null ? _c : value.screenX);
-  let y = Number((_f = (_e = (_d = value.clientY) != null ? _d : value.pageY) != null ? _e : value.y) != null ? _f : value.screenY);
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-  if (x > width + 4 || y > height + 4) {
-    const scale = Math.max(1, ratio);
-    x /= scale;
-    y /= scale;
-  }
-  return { x, y };
+function pointsForTouch(value) {
+  return touchPoints(value, {
+    width,
+    height,
+    renderRatio: ratio,
+    devicePixelRatio: pixelRatio,
+    screenTop: Number(windowInfo.screenTop || windowInfo.statusBarHeight || 0)
+  });
+}
+function pointForTouch(value) {
+  const points = pointsForTouch(value);
+  const buttonPoint = points.find((point) => Object.values(buttons).some((rect) => inside(point, rect)));
+  return buttonPoint || points[0] || null;
+}
+function duplicateTouch(phase, point) {
+  if (!point) return false;
+  const now2 = Date.now();
+  const duplicate = recentTouch && recentTouch.phase === phase && now2 - recentTouch.at < 80 && Math.hypot(point.x - recentTouch.x, point.y - recentTouch.y) < 2;
+  recentTouch = { phase, x: point.x, y: point.y, at: now2 };
+  return duplicate;
 }
 function pointerEvent(type, point) {
   return { type, clientX: point.x, clientY: point.y, pointerId: 1, pointerType: "touch", preventDefault() {
   } };
 }
-wxApi2.onTouchStart((event) => {
-  var _a14, _b4, _c, _d;
-  const point = touchPoint((_a14 = event.touches) == null ? void 0 : _a14[0]);
-  touchDebug = { phase: "start", point, touches: ((_b4 = event.touches) == null ? void 0 : _b4.length) || 0, changedTouches: ((_c = event.changedTouches) == null ? void 0 : _c.length) || 0 };
+function onTouchStart(event) {
+  var _a23, _b9, _c, _d, _e;
+  const value = ((_a23 = event.touches) == null ? void 0 : _a23[0]) || ((_b9 = event.changedTouches) == null ? void 0 : _b9[0]);
+  const candidates = pointsForTouch(value);
+  const point = pointForTouch(value);
+  touchDebug = { phase: "start", point, candidates, touches: ((_c = event.touches) == null ? void 0 : _c.length) || 0, changedTouches: ((_d = event.changedTouches) == null ? void 0 : _d.length) || 0 };
   if (!point) return;
+  if (duplicateTouch("start", point)) return;
   const screen = screenForState();
   const uiButton = Object.values(buttons).some((rect) => inside(point, rect));
   if (uiButton) {
     handleTap(point);
     touch = { start: point, last: point, canvas: false, handled: true };
-    (_d = wxApi2.vibrateShort) == null ? void 0 : _d.call(wxApi2, { type: "light" });
+    (_e = wxApi2.vibrateShort) == null ? void 0 : _e.call(wxApi2, { type: "light" });
     return;
   }
   touch = { start: point, last: point, canvas: screen === "game" && !uiButton };
@@ -25488,30 +25561,59 @@ wxApi2.onTouchStart((event) => {
     nativeCanvas.dispatchEvent(pointerEvent("pointerdown", point));
     globalThis.__happyJumpPlatform.dispatchEvent(pointerEvent("pointerdown", point));
   }
-});
-wxApi2.onTouchMove((event) => {
-  var _a14, _b4, _c;
-  const point = touchPoint((_a14 = event.touches) == null ? void 0 : _a14[0]);
-  touchDebug = { phase: "move", point, touches: ((_b4 = event.touches) == null ? void 0 : _b4.length) || 0, changedTouches: ((_c = event.changedTouches) == null ? void 0 : _c.length) || 0 };
+}
+function onTouchMove(event) {
+  var _a23, _b9, _c, _d;
+  const point = pointForTouch(((_a23 = event.touches) == null ? void 0 : _a23[0]) || ((_b9 = event.changedTouches) == null ? void 0 : _b9[0]));
+  touchDebug = { phase: "move", point, touches: ((_c = event.touches) == null ? void 0 : _c.length) || 0, changedTouches: ((_d = event.changedTouches) == null ? void 0 : _d.length) || 0 };
   if (!touch || !point) return;
+  if (duplicateTouch("move", point)) return;
   touch.last = point;
   if (touch.canvas) nativeCanvas.dispatchEvent(pointerEvent("pointermove", point));
-});
-wxApi2.onTouchEnd((event) => {
-  var _a14, _b4, _c;
+}
+function onTouchEnd(event) {
+  var _a23, _b9, _c, _d;
   if (!touch) return;
-  const point = touchPoint((_a14 = event.changedTouches) == null ? void 0 : _a14[0]) || touch.last;
-  touchDebug = { phase: "end", point, touches: ((_b4 = event.touches) == null ? void 0 : _b4.length) || 0, changedTouches: ((_c = event.changedTouches) == null ? void 0 : _c.length) || 0 };
+  const point = pointForTouch(((_a23 = event.changedTouches) == null ? void 0 : _a23[0]) || ((_b9 = event.touches) == null ? void 0 : _b9[0])) || touch.last;
+  touchDebug = { phase: "end", point, touches: ((_c = event.touches) == null ? void 0 : _c.length) || 0, changedTouches: ((_d = event.changedTouches) == null ? void 0 : _d.length) || 0 };
+  if (duplicateTouch("end", point)) return;
   const active = touch;
   touch = null;
   if (active.handled) return;
   if (active.canvas) nativeCanvas.dispatchEvent(pointerEvent("pointerup", point));
   else if (Math.hypot(point.x - active.start.x, point.y - active.start.y) < 16) handleTap(point);
-});
-wxApi2.onTouchCancel(() => {
+}
+function onTouchCancel() {
   if (touch == null ? void 0 : touch.canvas) nativeCanvas.dispatchEvent(pointerEvent("pointercancel", touch.last));
   touch = null;
-});
+}
+var _a15;
+(_a15 = wxApi2.onTouchStart) == null ? void 0 : _a15.call(wxApi2, onTouchStart);
+var _a16;
+(_a16 = wxApi2.onTouchMove) == null ? void 0 : _a16.call(wxApi2, onTouchMove);
+var _a17;
+(_a17 = wxApi2.onTouchEnd) == null ? void 0 : _a17.call(wxApi2, onTouchEnd);
+var _a18;
+(_a18 = wxApi2.onTouchCancel) == null ? void 0 : _a18.call(wxApi2, onTouchCancel);
+var _a19, _b5;
+(_b5 = (_a19 = nativeCanvas).addEventListener) == null ? void 0 : _b5.call(_a19, "touchstart", onTouchStart);
+var _a20, _b6;
+(_b6 = (_a20 = nativeCanvas).addEventListener) == null ? void 0 : _b6.call(_a20, "touchmove", onTouchMove);
+var _a21, _b7;
+(_b7 = (_a21 = nativeCanvas).addEventListener) == null ? void 0 : _b7.call(_a21, "touchend", onTouchEnd);
+var _a22, _b8;
+(_b8 = (_a22 = nativeCanvas).addEventListener) == null ? void 0 : _b8.call(_a22, "touchcancel", onTouchCancel);
+function runDevtoolsTouchTest() {
+  var _a23;
+  if (!isDevtools) return;
+  const request = wxApi2.getStorageSync(DEVTOOLS_TOUCH_KEY);
+  if (!(request == null ? void 0 : request.id) || request.id === lastTouchTestId || !request.touch) return;
+  lastTouchTestId = request.id;
+  (_a23 = wxApi2.removeStorageSync) == null ? void 0 : _a23.call(wxApi2, DEVTOOLS_TOUCH_KEY);
+  const event = { touches: [request.touch], changedTouches: [] };
+  onTouchStart(event);
+  onTouchEnd({ touches: [], changedTouches: [request.touch] });
+}
 wxApi2.onHide(() => {
   document3.hidden = true;
   globalThis.__happyJumpPlatform.dispatchEvent({ type: "visibilitychange" });
@@ -25524,6 +25626,7 @@ function renderWechatOverlay({ renderer: renderer2, state: state2, levels }) {
   latestState = state2;
   latestLevels = levels;
   ensureOverlay();
+  runDevtoolsTouchTest();
   if (state2.over && !previousOver) saveResult(state2);
   previousOver = state2.over;
   const toast = document3.querySelector("#toast");
