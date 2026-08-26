@@ -1,4 +1,5 @@
 try {
+  wx.removeStorageSync?.('happy-jump-startup-error');
   require('./src/main-3d.js');
 } catch (error) {
   const detail = String(error?.stack || error?.message || error);

@@ -23,6 +23,14 @@ function dispatch(store, event) {
   (store.get(event.type) || []).forEach((listener) => listener(event));
 }
 
+function unlisten(store, type, listener) {
+  const listeners = store.get(type);
+  if (!listeners) return;
+  const next = listeners.filter((candidate) => candidate !== listener);
+  if (next.length) store.set(type, next);
+  else store.delete(type);
+}
+
 function makeClassList() {
   const values = new Set();
   return {
@@ -101,11 +109,23 @@ const ids = [
 ];
 ids.forEach((id) => elements.set(id, makeElement(id)));
 if (nativeCanvas) {
+  const nativeAddEventListener = nativeCanvas.addEventListener?.bind(nativeCanvas);
+  const nativeRemoveEventListener = nativeCanvas.removeEventListener?.bind(nativeCanvas);
+  const forwardedPointerEvents = new Set(['pointerdown', 'pointermove', 'pointerup', 'pointercancel']);
   nativeCanvas.style ||= {};
   nativeCanvas.dataset ||= {};
-  nativeCanvas.addEventListener ||= (type, listener) => listen(canvasListeners, type, listener);
-  nativeCanvas.removeEventListener ||= () => {};
-  nativeCanvas.dispatchEvent ||= (event) => dispatch(canvasListeners, event);
+  nativeCanvas.addEventListener = (type, listener, options) => {
+    listen(canvasListeners, type, listener);
+    if (!forwardedPointerEvents.has(type)) nativeAddEventListener?.(type, listener, options);
+  };
+  nativeCanvas.removeEventListener = (type, listener, options) => {
+    unlisten(canvasListeners, type, listener);
+    if (!forwardedPointerEvents.has(type)) nativeRemoveEventListener?.(type, listener, options);
+  };
+  nativeCanvas.dispatchEvent = (event) => {
+    dispatch(canvasListeners, event);
+    return true;
+  };
   nativeCanvas.setAttribute ||= (name, value) => { nativeCanvas[name] = String(value); };
   nativeCanvas.getBoundingClientRect ||= () => ({ left: 0, top: 0, width, height, right: width, bottom: height });
   nativeCanvas.setPointerCapture ||= () => {};

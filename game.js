@@ -2592,6 +2592,10 @@ window.__bounceGrid = {
     respawning: state.respawning,
     invulnerable: state.invulnerable,
     paused: state.paused,
+    locked: state.locked,
+    grounded: state.grounded,
+    falling: state.falling,
+    queuedMove: state.queuedMove ? [...state.queuedMove] : null,
     levelResultOpen: state.levelResultOpen,
     levelTilesExploded: state.levelTilesExploded,
     levelBestChain: state.levelBestChain,
@@ -2617,6 +2621,22 @@ window.__bounceGrid = {
       counts[tile.userData.state] = (counts[tile.userData.state] || 0) + 1;
       return counts;
     }, {})
+  }),
+  getDebugState: () => ({
+    colors: tiles.map((tile) => tile.userData.color),
+    states: tiles.map((tile) => tile.userData.state),
+    warningIds: tiles.map((tile) => tile.userData.warningId || null),
+    hop: state.hop ? {
+      from: [state.hop.from.userData.row, state.hop.from.userData.col],
+      to: [state.hop.to.userData.row, state.hop.to.userData.col],
+      progress: Number(state.hop.progress.toFixed(3))
+    } : null,
+    pointerStart: pointerStart ? {
+      x: pointerStart.x,
+      y: pointerStart.y,
+      moved: pointerStart.moved,
+      move: pointerStart.move ? [...pointerStart.move] : null
+    } : null
   })
 };
 // Build the first board behind the intro screen so the scene is never empty

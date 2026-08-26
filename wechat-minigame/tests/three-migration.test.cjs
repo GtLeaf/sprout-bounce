@@ -29,6 +29,10 @@ test('the platform layer supplies WeChat canvas, storage, touch and lifecycle se
   assert.match(shim, /getStorageSync/);
   assert.match(shim, /Math\.min\(Number\(info\.pixelRatio \|\| 1\), 1\.5\)/);
   assert.match(shim, /__happyJumpPlatform\.loadImage/);
+  assert.match(shim, /forwardedPointerEvents/);
+  assert.match(shim, /nativeCanvas\.addEventListener =/);
+  assert.match(shim, /dispatch\(canvasListeners, event\)/);
+  assert.doesNotMatch(shim, /nativeCanvas\.addEventListener \|\|=/);
   assert.match(ui, /new WechatLeaderboard\(wxApi, config\)/);
   assert.match(ui, /wxApi\.onTouchStart/);
   assert.match(ui, /wxApi\.onHide/);
@@ -116,4 +120,18 @@ test('first-time WeChat players receive the complete live-board tutorial', async
   assert.match(ui, /clickDummy\('tutorialPrev'\)/);
   assert.match(ui, /clickDummy\('tutorialNext'\)/);
   assert.match(ui, /clickDummy\('tutorialClose'\)/);
+});
+
+test('developer-tool diagnostics expose runtime state without running on phones', async () => {
+  const [entry, game, ui] = await Promise.all([
+    source('wechat-minigame/game.js'),
+    source('game.js'),
+    source('wechat-minigame/src/wechat-ui.mjs')
+  ]);
+  assert.match(entry, /removeStorageSync\?\.\('happy-jump-startup-error'\)/);
+  assert.match(game, /getDebugState/);
+  assert.match(game, /colors: tiles\.map/);
+  assert.match(ui, /isDevtools/);
+  assert.match(ui, /happy-jump-devtools-state-v1/);
+  assert.match(ui, /if \(!isDevtools\) return/);
 });

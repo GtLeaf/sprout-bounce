@@ -8,6 +8,9 @@ const wxApi = globalThis.wx;
 const document = globalThis.__happyJumpPlatform.document;
 const board = globalThis.__bounceGrid;
 const cloud = new WechatLeaderboard(wxApi, config);
+const deviceInfo = wxApi.getDeviceInfo?.() || wxApi.getSystemInfoSync?.() || {};
+const isDevtools = deviceInfo.platform === 'devtools' || deviceInfo.brand === 'devtools';
+const DEVTOOLS_STATE_KEY = 'happy-jump-devtools-state-v1';
 const uiCanvas = wxApi.createCanvas();
 uiCanvas.width = Math.max(1, Math.floor(width * ratio));
 uiCanvas.height = Math.max(1, Math.floor(height * ratio));
@@ -40,6 +43,7 @@ let texture = null;
 let lastSignature = '';
 let lastDraw = 0;
 let userInfoButton = null;
+let touchDebug = null;
 
 function loadArt(name, source) {
   const image = wxApi.createImage();
@@ -379,6 +383,35 @@ function draw(state, levels) {
   texture.needsUpdate = true;
 }
 
+function writeDevtoolsState(state) {
+  if (!isDevtools) return;
+  const tutorial = document.querySelector('#tutorial');
+  const artState = Object.keys(art).reduce((result, name) => {
+    result[name] = art[name] === null ? 'failed' : 'loaded';
+    return result;
+  }, {});
+  try {
+    wxApi.setStorageSync(DEVTOOLS_STATE_KEY, {
+      ...board.getState(),
+      ...board.getDebugState?.(),
+      screen: screenForState(state),
+      tutorial: tutorial.classList.contains('show') ? {
+        step: document.querySelector('#tutorialKicker').textContent,
+        title: document.querySelector('#tutorialTitle').textContent
+      } : null,
+      art: artState,
+      buttonNames: Object.keys(buttons),
+      buttons: Object.keys(buttons).reduce((result, name) => {
+        result[name] = { ...buttons[name] };
+        return result;
+      }, {}),
+      touchDebug,
+      overlayReady: Boolean(overlay && texture),
+      updatedAt: Date.now()
+    });
+  } catch { /* Diagnostics must never affect the game loop. */ }
+}
+
 function ensureOverlay() {
   if (overlay) return;
   texture = new THREE.CanvasTexture(uiCanvas);
@@ -512,6 +545,7 @@ function pointerEvent(type, point) {
 
 wxApi.onTouchStart((event) => {
   const point = touchPoint(event.touches?.[0]);
+  touchDebug = { phase: 'start', point, touches: event.touches?.length || 0, changedTouches: event.changedTouches?.length || 0 };
   if (!point) return;
   const screen = screenForState();
   const uiButton = Object.values(buttons).some((rect) => inside(point, rect));
@@ -530,6 +564,7 @@ wxApi.onTouchStart((event) => {
 
 wxApi.onTouchMove((event) => {
   const point = touchPoint(event.touches?.[0]);
+  touchDebug = { phase: 'move', point, touches: event.touches?.length || 0, changedTouches: event.changedTouches?.length || 0 };
   if (!touch || !point) return;
   touch.last = point;
   if (touch.canvas) nativeCanvas.dispatchEvent(pointerEvent('pointermove', point));
@@ -538,6 +573,7 @@ wxApi.onTouchMove((event) => {
 wxApi.onTouchEnd((event) => {
   if (!touch) return;
   const point = touchPoint(event.changedTouches?.[0]) || touch.last;
+  touchDebug = { phase: 'end', point, touches: event.touches?.length || 0, changedTouches: event.changedTouches?.length || 0 };
   const active = touch;
   touch = null;
   if (active.handled) return;
@@ -579,6 +615,7 @@ function renderWechatOverlay({ renderer, state, levels }) {
   const now = Date.now();
   if (signature !== lastSignature || now - lastDraw > 500) {
     draw(board.getState(), levels);
+    writeDevtoolsState(state);
     lastSignature = signature;
     lastDraw = now;
   }
