@@ -40,6 +40,12 @@ test('the shared 3D game exposes its renderer hook and native scene background',
   assert.match(game, /if \(platform\.canvas\) scene\.background = new THREE\.Color\(0x5adbe4\)/);
   assert.match(game, /__happyJumpAfterRender/);
   assert.match(game, /if \(platform\.canvas\) return false;/);
+  assert.match(game, /platform\.canvas \? THREE\.NoToneMapping/);
+  assert.match(game, /new THREE\.MeshBasicMaterial/);
+  assert.match(game, /material\.userData\.gameGlowColor = new THREE\.Color/);
+  assert.doesNotMatch(game, /material\.emissive = new THREE\.Color/);
+  assert.match(game, /setMaterialGlowIntensity/);
+  assert.match(game, /renderer\.shadowMap\.enabled = !platform\.canvas/);
 });
 
 test('the bundled renderer can fall back to WebGL 1 on physical WeChat devices', async () => {
@@ -57,4 +63,24 @@ test('startup failures are visible instead of leaving a black screen', async () 
   const entry = await source('wechat-minigame/game.js');
   assert.match(entry, /wx\.showModal/);
   assert.match(entry, /游戏启动失败/);
+});
+
+test('physical-device taps accept page coordinates and trigger UI on touch start', async () => {
+  const ui = await source('wechat-minigame/src/wechat-ui.mjs');
+  assert.match(ui, /value\.clientX \?\? value\.pageX \?\? value\.x \?\? value\.screenX/);
+  assert.match(ui, /if \(uiButton\) \{\s*handleTap\(point\)/);
+  assert.match(ui, /active\.handled/);
+});
+
+test('the mini game packages and renders the original branded key art', async () => {
+  const ui = await source('wechat-minigame/src/wechat-ui.mjs');
+  const assets = await Promise.all([
+    source('wechat-minigame/assets/sprout-keyart-mobile.jpg'),
+    source('wechat-minigame/assets/happy-jump-logo.png')
+  ]);
+  assert.match(ui, /assets\/sprout-keyart-mobile\.jpg/);
+  assert.match(ui, /assets\/happy-jump-logo\.png/);
+  assert.match(ui, /texture\.colorSpace = THREE\.NoColorSpace/);
+  assert.match(ui, /material\.toneMapped = false/);
+  assert.ok(assets.every((asset) => asset.length > 50_000));
 });

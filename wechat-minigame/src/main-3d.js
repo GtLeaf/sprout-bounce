@@ -22539,11 +22539,11 @@ var renderer = new WebGLRenderer({ canvas: platform.canvas, antialias: true, alp
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.setClearColor(1320027, 0);
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = PCFSoftShadowMap;
+renderer.shadowMap.enabled = !platform.canvas;
+if (!platform.canvas) renderer.shadowMap.type = PCFSoftShadowMap;
 renderer.outputColorSpace = SRGBColorSpace;
-renderer.toneMapping = ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.08;
+renderer.toneMapping = platform.canvas ? NoToneMapping : ACESFilmicToneMapping;
+renderer.toneMappingExposure = platform.canvas ? 1 : 1.08;
 $("#game").appendChild(renderer.domElement);
 scene.add(new HemisphereLight(16777215, 5152650, 1.55));
 var sun = new DirectionalLight(16774351, 2.15);
@@ -22592,13 +22592,67 @@ var SILENT_NEGATIVE_CUES = /* @__PURE__ */ new Set([
 var COLOR_DEFS = TILE_COLORS;
 var COLORS = COLOR_DEFS.map((item) => item.hex);
 var MAX_LIVES = 3;
-var lowPolyMaterial = (color, options = {}) => new MeshStandardMaterial({
-  color,
-  roughness: 0.86,
-  metalness: 0,
-  flatShading: true,
-  ...options
-});
+function refreshFallbackMaterial(material) {
+  if (!platform.canvas || !material.isMeshBasicMaterial) return;
+  const data = material.userData;
+  const baseColor = data.gameBaseColor || material.color;
+  const glowColor = data.gameGlowColor;
+  const glowAmount = MathUtils.clamp((data.gameGlowIntensity || 0) * 0.32, 0, 0.68);
+  material.color.copy(baseColor);
+  if (glowColor && glowAmount > 0) material.color.lerp(glowColor, glowAmount);
+}
+function setMaterialBaseColor(material, color) {
+  if (platform.canvas && material.isMeshBasicMaterial) {
+    material.userData.gameBaseColor = color.clone ? color.clone() : new Color(color);
+    refreshFallbackMaterial(material);
+    return;
+  }
+  material.color.copy(color);
+}
+function setMaterialGlow(material, color, intensity) {
+  var _a11;
+  if ((_a11 = material.emissive) == null ? void 0 : _a11.isColor) {
+    material.emissive.setHex(color);
+    material.emissiveIntensity = intensity;
+    return;
+  }
+  material.userData.gameGlowColor = new Color(color);
+  material.userData.gameGlowIntensity = intensity;
+  refreshFallbackMaterial(material);
+}
+function setMaterialGlowIntensity(material, intensity) {
+  var _a11;
+  if ((_a11 = material.emissive) == null ? void 0 : _a11.isColor) {
+    material.emissiveIntensity = intensity;
+    return;
+  }
+  material.userData.gameGlowIntensity = intensity;
+  refreshFallbackMaterial(material);
+}
+var lowPolyMaterial = (color, options = {}) => {
+  if (platform.canvas) {
+    const {
+      roughness: _roughness,
+      metalness: _metalness,
+      emissive = 0,
+      emissiveIntensity = 0,
+      ...wechatOptions
+    } = options;
+    const material = new MeshBasicMaterial({ color, ...wechatOptions });
+    material.userData.gameBaseColor = material.color.clone();
+    material.userData.gameGlowColor = new Color(emissive);
+    material.userData.gameGlowIntensity = emissiveIntensity;
+    refreshFallbackMaterial(material);
+    return material;
+  }
+  return new MeshStandardMaterial({
+    color,
+    roughness: 0.86,
+    metalness: 0,
+    flatShading: true,
+    ...options
+  });
+};
 var boardSpan = BOARD * STEP - GAP;
 var platformRadius = (boardSpan + 0.34) / Math.SQRT2;
 var island = new Mesh(
@@ -22647,12 +22701,10 @@ function applyColor(tile, index) {
   const data = tile.userData;
   data.color = index;
   const baseColor = new Color(COLORS[index]);
-  data.mainMat.color.copy(baseColor).offsetHSL(0, 0.025, -0.035);
-  data.topMat.color.copy(baseColor).offsetHSL(0, 0.025, 0.028);
-  data.mainMat.emissive.setHex(0);
-  data.topMat.emissive.setHex(0);
-  data.mainMat.emissiveIntensity = 0;
-  data.topMat.emissiveIntensity = 0;
+  setMaterialBaseColor(data.mainMat, baseColor.clone().offsetHSL(0, 0.025, -0.035));
+  setMaterialBaseColor(data.topMat, baseColor.clone().offsetHSL(0, 0.025, 0.028));
+  setMaterialGlow(data.mainMat, 0, 0);
+  setMaterialGlow(data.topMat, 0, 0);
 }
 function makeTile(row, col) {
   const group = new Group();
@@ -23976,10 +24028,8 @@ function triggerMatch(tile) {
   return group;
 }
 function styleWarningTile(member) {
-  member.userData.mainMat.emissive.setHex(6034465);
-  member.userData.topMat.emissive.setHex(16770186);
-  member.userData.mainMat.emissiveIntensity = 0.7;
-  member.userData.topMat.emissiveIntensity = 0.9;
+  setMaterialGlow(member.userData.mainMat, 6034465, 0.7);
+  setMaterialGlow(member.userData.topMat, 16770186, 0.9);
 }
 function extendWarningGroup(group, flashing) {
   const added = group.filter((member) => member.userData.state === "solid");
@@ -24008,10 +24058,8 @@ function setBurstingTile(tile, timer, burstIndex, warningId, chainDepth) {
   data.burstTotal = timer;
   data.burstIndex = burstIndex;
   data.bounceStrength = 0;
-  data.mainMat.emissive.setHex(16766814);
-  data.topMat.emissive.setHex(16777215);
-  data.mainMat.emissiveIntensity = 1.1;
-  data.topMat.emissiveIntensity = 1.55;
+  setMaterialGlow(data.mainMat, 16766814, 1.1);
+  setMaterialGlow(data.topMat, 16777215, 1.55);
 }
 function extendBurstingGroup(group, bursting) {
   const added = group.filter((member) => member.userData.state === "solid" || member.userData.state === "warn");
@@ -24401,7 +24449,7 @@ function updateTiles(delta, elapsed) {
       tile.position.y = Math.sin(elapsed * 28 + data.row + data.col) * 0.045;
       updateTileBounce(tile, delta);
       const pulse = 0.55 + Math.sin(elapsed * 20) * 0.35;
-      data.topMat.emissiveIntensity = pulse + 0.5;
+      setMaterialGlowIntensity(data.topMat, pulse + 0.5);
       if (data.timer <= 0) expiredWarnings.add(data.warningId);
     } else if (data.state === "bursting") {
       data.timer -= delta;
@@ -24409,8 +24457,8 @@ function updateTiles(delta, elapsed) {
       const squeeze = Math.sin(Math.min(1, progress) * Math.PI * 0.5);
       tile.position.y = Math.sin(Math.min(1, progress) * Math.PI) * 0.12;
       tile.scale.set(1 + squeeze * 0.16, 1 - squeeze * 0.28, 1 + squeeze * 0.16);
-      data.mainMat.emissiveIntensity = 1.1 + squeeze * 0.75;
-      data.topMat.emissiveIntensity = 1.55 + squeeze * 0.65;
+      setMaterialGlowIntensity(data.mainMat, 1.1 + squeeze * 0.75);
+      setMaterialGlowIntensity(data.topMat, 1.55 + squeeze * 0.65);
       if (data.timer <= 0) {
         const playerCaught = !state.respawning && state.invulnerable <= 0 && state.grounded && state.currentTile === tile;
         clearBonus(tile);
@@ -24418,8 +24466,8 @@ function updateTiles(delta, elapsed) {
         data.state = "falling";
         data.timer = 0.72 + Math.random() * 0.18;
         data.vy = -2.8 - Math.random() * 1.4;
-        data.mainMat.emissiveIntensity = 0;
-        data.topMat.emissiveIntensity = 0;
+        setMaterialGlowIntensity(data.mainMat, 0);
+        setMaterialGlowIntensity(data.topMat, 0);
         sfx("tilePop", { index: data.burstIndex, chain: data.chainDepth });
         if (playerCaught) loseLife("\u88AB\u7206\u7834\u5377\u8D70\u4E86", "blast");
       }
@@ -24834,6 +24882,7 @@ var context = uiCanvas.getContext("2d");
 context.scale(ratio, ratio);
 var COLORS2 = ["#f69d46", "#f6d14e", "#7acd5a", "#42b4df", "#c982d7", "#f06b70"];
 var LOCAL_BEST_KEY = "happy-jump-wechat-local-best-v2";
+var art = {};
 var buttons = {};
 var leaderboardState = {
   status: "\u6B63\u5728\u767B\u5F55\u5FAE\u4FE1\u8D26\u53F7",
@@ -24852,6 +24901,22 @@ var texture = null;
 var lastSignature = "";
 var lastDraw = 0;
 var userInfoButton = null;
+function loadArt(name, source) {
+  const image = wxApi2.createImage();
+  image.onload = () => {
+    art[name] = image;
+    lastSignature = "";
+  };
+  image.onerror = () => {
+    art[name] = null;
+  };
+  image.src = source;
+}
+loadArt("keyArt", "assets/sprout-keyart-mobile.jpg");
+loadArt("logo", "assets/happy-jump-logo.png");
+loadArt("forward", "assets/ui-forward.png");
+loadArt("soundOn", "assets/ui-sound-on.png");
+loadArt("soundOff", "assets/ui-sound-off.png");
 function roundRect(ctx, x, y, w, h, radius = 8) {
   const r = Math.min(radius, w / 2, h / 2);
   ctx.beginPath();
@@ -24882,18 +24947,26 @@ function text(value, x, y, size, color = "#173b52", align = "left", weight = "40
   context.fillText(String(value), x, y);
   context.restore();
 }
-function button(name, label, x, y, w, h, primary = false) {
+function button(name, label, x, y, w, h, primary = false, icon = null) {
   fillRect(x, y, w, h, primary ? "#ef676d" : "#e3f2ec");
   strokeRect(x, y, w, h, primary ? "#d94e59" : "#bcded2");
-  text(label, x + w / 2, y + h / 2 + 1, primary ? 18 : 15, primary ? "#ffffff" : "#245f54", "center", "700");
+  const iconSize = icon ? Math.min(24, h * 0.46) : 0;
+  const center = x + w / 2 - iconSize * 0.22;
+  text(label, center, y + h / 2 + 1, primary ? 18 : 15, primary ? "#ffffff" : "#245f54", "center", "700");
+  if (icon) context.drawImage(icon, center + Math.min(76, w * 0.23), y + (h - iconSize) / 2, iconSize, iconSize);
   buttons[name] = { x, y, w, h };
 }
 function inside(point, rect) {
   return Boolean(point && rect && point.x >= rect.x && point.x <= rect.x + rect.w && point.y >= rect.y && point.y <= rect.y + rect.h);
 }
 function drawBrand(y = 44) {
-  text("HAPPY JUMP", width / 2, y, Math.min(34, width * 0.09), "#ffffff", "center", "700");
-  text("\u8DF3 \u8DF3 \u4E50", width / 2, y + 35, 15, "#dffff5", "center", "700");
+  if (art.logo) {
+    const logoWidth = Math.min(width * 0.48, 205);
+    const logoHeight = logoWidth * 580 / 993;
+    context.drawImage(art.logo, 18, y, logoWidth, logoHeight);
+    return;
+  }
+  text("HAPPY JUMP", width / 2, y + 22, Math.min(34, width * 0.09), "#ffffff", "center", "700");
 }
 function screenForState(state2 = latestState) {
   if (manualScreen) return manualScreen;
@@ -24903,28 +24976,35 @@ function screenForState(state2 = latestState) {
   return state2.running ? "game" : "home";
 }
 function drawHome() {
-  context.fillStyle = "rgba(16,54,68,0.28)";
+  context.fillStyle = "#4edfeb";
   context.fillRect(0, 0, width, height);
-  drawBrand(Math.max(48, height * 0.09));
-  const x = 22;
-  const w = width - 44;
-  const h = Math.min(358, height - 210);
-  const y = Math.max(150, (height - h) / 2 + 34);
-  fillRect(x, y, w, h, "rgba(255,253,247,0.96)");
-  text(leaderboardState.player.displayName || "\u5FAE\u4FE1\u73A9\u5BB6", x + 24, y + 38, 18, "#173b52", "left", "700");
-  text(leaderboardState.status, x + 24, y + 64, 12, "#58746f");
+  const artHeight = Math.min(height * 0.61, width * 1050 / 900);
+  if (art.keyArt) context.drawImage(art.keyArt, 0, 0, width, artHeight);
+  const fade = context.createLinearGradient(0, artHeight * 0.72, 0, artHeight + 20);
+  fade.addColorStop(0, "rgba(78,223,235,0)");
+  fade.addColorStop(1, "#4edfeb");
+  context.fillStyle = fade;
+  context.fillRect(0, artHeight * 0.7, width, artHeight * 0.3 + 22);
+  drawBrand(Math.max(28, height * 0.045));
+  const x = 16;
+  const w = width - 32;
+  const h = Math.min(286, Math.max(250, height * 0.34));
+  const y = height - h - 18;
+  fillRect(x, y, w, h, "rgba(255,253,247,0.97)");
+  text(leaderboardState.player.displayName || "\u5FAE\u4FE1\u73A9\u5BB6", x + 20, y + 28, 17, "#173b52", "left", "700");
+  text(leaderboardState.status, x + 20, y + 51, 11, "#58746f");
   context.strokeStyle = "#d7ebe4";
   context.beginPath();
-  context.moveTo(x + 22, y + 88);
-  context.lineTo(x + w - 22, y + 88);
+  context.moveTo(x + 20, y + 67);
+  context.lineTo(x + w - 20, y + 67);
   context.stroke();
-  text("\u5386\u53F2\u6700\u4F73", x + 24, y + 116, 12, "#6b837f");
-  text(leaderboardState.player.bestScore || 0, x + 24, y + 148, 29, "#173b52", "left", "700");
-  text("\u6211\u7684\u6392\u540D", x + w / 2 + 8, y + 116, 12, "#6b837f");
-  text(leaderboardState.rank ? `\u7B2C ${leaderboardState.rank} \u540D` : "\u6682\u65E0", x + w / 2 + 8, y + 148, 23, "#237063", "left", "700");
-  button("start", "\u5F00\u59CB\u6311\u6218", x + 22, y + h - 114, w - 44, 52, true);
-  button("leaderboard", "\u5168\u7403\u6392\u884C\u699C", x + 22, y + h - 52, w - 44, 38, false);
-  syncProfileButton(x + 22, y + 76, w - 44, 32);
+  text("\u5386\u53F2\u6700\u4F73", x + 20, y + 87, 11, "#6b837f");
+  text(leaderboardState.player.bestScore || 0, x + 20, y + 116, 26, "#173b52", "left", "700");
+  text("\u6211\u7684\u6392\u540D", x + w / 2 + 8, y + 87, 11, "#6b837f");
+  text(leaderboardState.rank ? `\u7B2C ${leaderboardState.rank} \u540D` : "\u6682\u65E0", x + w / 2 + 8, y + 116, 21, "#237063", "left", "700");
+  button("start", "\u5F00\u59CB\u6311\u6218", x + 18, y + h - 105, w - 36, 49, true, art.forward);
+  button("leaderboard", "\u5168\u7403\u6392\u884C\u699C", x + 18, y + h - 46, w - 36, 34, false);
+  syncProfileButton(x + w - 150, y + 14, 132, 28);
 }
 function drawHud(state2, levels) {
   var _a11, _b2, _c;
@@ -24951,7 +25031,9 @@ function drawHud(state2, levels) {
   const soundX = width - 49;
   const soundY = top + 91;
   fillRect(soundX, soundY, 39, 39, "rgba(255,253,247,0.9)");
-  text(state2.sound ? "\u266A" : "\xD7", soundX + 19.5, soundY + 20, 21, "#245f54", "center", "700");
+  const soundArt = state2.sound ? art.soundOn : art.soundOff;
+  if (soundArt) context.drawImage(soundArt, soundX + 8, soundY + 8, 23, 23);
+  else text(state2.sound ? "\u266A" : "\xD7", soundX + 19.5, soundY + 20, 21, "#245f54", "center", "700");
   buttons.sound = { x: soundX, y: soundY, w: 39, h: 39 };
   hideProfileButton();
 }
@@ -25044,12 +25126,13 @@ function draw(state2, levels) {
 function ensureOverlay() {
   if (overlay) return;
   texture = new CanvasTexture(uiCanvas);
-  texture.colorSpace = SRGBColorSpace;
+  texture.colorSpace = NoColorSpace;
   texture.generateMipmaps = false;
   texture.minFilter = LinearFilter;
   const scene2 = new Scene();
   const camera2 = new OrthographicCamera(0, width, height, 0, -10, 10);
   const material = new SpriteMaterial({ map: texture, transparent: true, depthTest: false, depthWrite: false });
+  material.toneMapped = false;
   const sprite = new Sprite(material);
   sprite.center.set(0.5, 0.5);
   sprite.position.set(width / 2, height / 2, 0);
@@ -25150,19 +25233,34 @@ function handleTap(point) {
   }
 }
 function touchPoint(value) {
-  var _a11, _b2, _c, _d;
-  return value ? { x: Number((_b2 = (_a11 = value.clientX) != null ? _a11 : value.x) != null ? _b2 : 0), y: Number((_d = (_c = value.clientY) != null ? _c : value.y) != null ? _d : 0) } : null;
+  var _a11, _b2, _c, _d, _e, _f;
+  if (!value) return null;
+  let x = Number((_c = (_b2 = (_a11 = value.clientX) != null ? _a11 : value.pageX) != null ? _b2 : value.x) != null ? _c : value.screenX);
+  let y = Number((_f = (_e = (_d = value.clientY) != null ? _d : value.pageY) != null ? _e : value.y) != null ? _f : value.screenY);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  if (x > width + 4 || y > height + 4) {
+    const scale = Math.max(1, ratio);
+    x /= scale;
+    y /= scale;
+  }
+  return { x, y };
 }
 function pointerEvent(type, point) {
   return { type, clientX: point.x, clientY: point.y, pointerId: 1, pointerType: "touch", preventDefault() {
   } };
 }
 wxApi2.onTouchStart((event) => {
-  var _a11;
+  var _a11, _b2;
   const point = touchPoint((_a11 = event.touches) == null ? void 0 : _a11[0]);
   if (!point) return;
   const screen = screenForState();
   const uiButton = Object.values(buttons).some((rect) => inside(point, rect));
+  if (uiButton) {
+    handleTap(point);
+    touch = { start: point, last: point, canvas: false, handled: true };
+    (_b2 = wxApi2.vibrateShort) == null ? void 0 : _b2.call(wxApi2, { type: "light" });
+    return;
+  }
   touch = { start: point, last: point, canvas: screen === "game" && !uiButton };
   if (touch.canvas) {
     nativeCanvas.dispatchEvent(pointerEvent("pointerdown", point));
@@ -25182,6 +25280,7 @@ wxApi2.onTouchEnd((event) => {
   const point = touchPoint((_a11 = event.changedTouches) == null ? void 0 : _a11[0]) || touch.last;
   const active = touch;
   touch = null;
+  if (active.handled) return;
   if (active.canvas) nativeCanvas.dispatchEvent(pointerEvent("pointerup", point));
   else if (Math.hypot(point.x - active.start.x, point.y - active.start.y) < 16) handleTap(point);
 });

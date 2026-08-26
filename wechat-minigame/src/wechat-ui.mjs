@@ -16,6 +16,7 @@ context.scale(ratio, ratio);
 
 const COLORS = ['#f69d46', '#f6d14e', '#7acd5a', '#42b4df', '#c982d7', '#f06b70'];
 const LOCAL_BEST_KEY = 'happy-jump-wechat-local-best-v2';
+const art = {};
 const buttons = {};
 const leaderboardState = {
   status: '正在登录微信账号',
@@ -35,6 +36,22 @@ let texture = null;
 let lastSignature = '';
 let lastDraw = 0;
 let userInfoButton = null;
+
+function loadArt(name, source) {
+  const image = wxApi.createImage();
+  image.onload = () => {
+    art[name] = image;
+    lastSignature = '';
+  };
+  image.onerror = () => { art[name] = null; };
+  image.src = source;
+}
+
+loadArt('keyArt', 'assets/sprout-keyart-mobile.jpg');
+loadArt('logo', 'assets/happy-jump-logo.png');
+loadArt('forward', 'assets/ui-forward.png');
+loadArt('soundOn', 'assets/ui-sound-on.png');
+loadArt('soundOff', 'assets/ui-sound-off.png');
 
 function roundRect(ctx, x, y, w, h, radius = 8) {
   const r = Math.min(radius, w / 2, h / 2);
@@ -70,10 +87,13 @@ function text(value, x, y, size, color = '#173b52', align = 'left', weight = '40
   context.restore();
 }
 
-function button(name, label, x, y, w, h, primary = false) {
+function button(name, label, x, y, w, h, primary = false, icon = null) {
   fillRect(x, y, w, h, primary ? '#ef676d' : '#e3f2ec');
   strokeRect(x, y, w, h, primary ? '#d94e59' : '#bcded2');
-  text(label, x + w / 2, y + h / 2 + 1, primary ? 18 : 15, primary ? '#ffffff' : '#245f54', 'center', '700');
+  const iconSize = icon ? Math.min(24, h * 0.46) : 0;
+  const center = x + w / 2 - iconSize * 0.22;
+  text(label, center, y + h / 2 + 1, primary ? 18 : 15, primary ? '#ffffff' : '#245f54', 'center', '700');
+  if (icon) context.drawImage(icon, center + Math.min(76, w * 0.23), y + (h - iconSize) / 2, iconSize, iconSize);
   buttons[name] = { x, y, w, h };
 }
 
@@ -83,8 +103,13 @@ function inside(point, rect) {
 }
 
 function drawBrand(y = 44) {
-  text('HAPPY JUMP', width / 2, y, Math.min(34, width * 0.09), '#ffffff', 'center', '700');
-  text('跳 跳 乐', width / 2, y + 35, 15, '#dffff5', 'center', '700');
+  if (art.logo) {
+    const logoWidth = Math.min(width * 0.48, 205);
+    const logoHeight = logoWidth * 580 / 993;
+    context.drawImage(art.logo, 18, y, logoWidth, logoHeight);
+    return;
+  }
+  text('HAPPY JUMP', width / 2, y + 22, Math.min(34, width * 0.09), '#ffffff', 'center', '700');
 }
 
 function screenForState(state = latestState) {
@@ -96,31 +121,38 @@ function screenForState(state = latestState) {
 }
 
 function drawHome() {
-  context.fillStyle = 'rgba(16,54,68,0.28)';
+  context.fillStyle = '#4edfeb';
   context.fillRect(0, 0, width, height);
-  drawBrand(Math.max(48, height * 0.09));
+  const artHeight = Math.min(height * 0.61, width * 1050 / 900);
+  if (art.keyArt) context.drawImage(art.keyArt, 0, 0, width, artHeight);
+  const fade = context.createLinearGradient(0, artHeight * 0.72, 0, artHeight + 20);
+  fade.addColorStop(0, 'rgba(78,223,235,0)');
+  fade.addColorStop(1, '#4edfeb');
+  context.fillStyle = fade;
+  context.fillRect(0, artHeight * 0.7, width, artHeight * 0.3 + 22);
+  drawBrand(Math.max(28, height * 0.045));
 
-  const x = 22;
-  const w = width - 44;
-  const h = Math.min(358, height - 210);
-  const y = Math.max(150, (height - h) / 2 + 34);
-  fillRect(x, y, w, h, 'rgba(255,253,247,0.96)');
-  text(leaderboardState.player.displayName || '微信玩家', x + 24, y + 38, 18, '#173b52', 'left', '700');
-  text(leaderboardState.status, x + 24, y + 64, 12, '#58746f');
+  const x = 16;
+  const w = width - 32;
+  const h = Math.min(286, Math.max(250, height * 0.34));
+  const y = height - h - 18;
+  fillRect(x, y, w, h, 'rgba(255,253,247,0.97)');
+  text(leaderboardState.player.displayName || '微信玩家', x + 20, y + 28, 17, '#173b52', 'left', '700');
+  text(leaderboardState.status, x + 20, y + 51, 11, '#58746f');
 
   context.strokeStyle = '#d7ebe4';
   context.beginPath();
-  context.moveTo(x + 22, y + 88);
-  context.lineTo(x + w - 22, y + 88);
+  context.moveTo(x + 20, y + 67);
+  context.lineTo(x + w - 20, y + 67);
   context.stroke();
-  text('历史最佳', x + 24, y + 116, 12, '#6b837f');
-  text(leaderboardState.player.bestScore || 0, x + 24, y + 148, 29, '#173b52', 'left', '700');
-  text('我的排名', x + w / 2 + 8, y + 116, 12, '#6b837f');
-  text(leaderboardState.rank ? `第 ${leaderboardState.rank} 名` : '暂无', x + w / 2 + 8, y + 148, 23, '#237063', 'left', '700');
+  text('历史最佳', x + 20, y + 87, 11, '#6b837f');
+  text(leaderboardState.player.bestScore || 0, x + 20, y + 116, 26, '#173b52', 'left', '700');
+  text('我的排名', x + w / 2 + 8, y + 87, 11, '#6b837f');
+  text(leaderboardState.rank ? `第 ${leaderboardState.rank} 名` : '暂无', x + w / 2 + 8, y + 116, 21, '#237063', 'left', '700');
 
-  button('start', '开始挑战', x + 22, y + h - 114, w - 44, 52, true);
-  button('leaderboard', '全球排行榜', x + 22, y + h - 52, w - 44, 38, false);
-  syncProfileButton(x + 22, y + 76, w - 44, 32);
+  button('start', '开始挑战', x + 18, y + h - 105, w - 36, 49, true, art.forward);
+  button('leaderboard', '全球排行榜', x + 18, y + h - 46, w - 36, 34, false);
+  syncProfileButton(x + w - 150, y + 14, 132, 28);
 }
 
 function drawHud(state, levels) {
@@ -148,7 +180,9 @@ function drawHud(state, levels) {
   const soundX = width - 49;
   const soundY = top + 91;
   fillRect(soundX, soundY, 39, 39, 'rgba(255,253,247,0.9)');
-  text(state.sound ? '♪' : '×', soundX + 19.5, soundY + 20, 21, '#245f54', 'center', '700');
+  const soundArt = state.sound ? art.soundOn : art.soundOff;
+  if (soundArt) context.drawImage(soundArt, soundX + 8, soundY + 8, 23, 23);
+  else text(state.sound ? '♪' : '×', soundX + 19.5, soundY + 20, 21, '#245f54', 'center', '700');
   buttons.sound = { x: soundX, y: soundY, w: 39, h: 39 };
   hideProfileButton();
 }
@@ -247,12 +281,15 @@ function draw(state, levels) {
 function ensureOverlay() {
   if (overlay) return;
   texture = new THREE.CanvasTexture(uiCanvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
+  // WeChat canvases are not DOM canvas instances. r162's sRGB converter
+  // otherwise retries an unsupported browser conversion on every HUD update.
+  texture.colorSpace = THREE.NoColorSpace;
   texture.generateMipmaps = false;
   texture.minFilter = THREE.LinearFilter;
   const scene = new THREE.Scene();
   const camera = new THREE.OrthographicCamera(0, width, height, 0, -10, 10);
   const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, depthWrite: false });
+  material.toneMapped = false;
   const sprite = new THREE.Sprite(material);
   sprite.center.set(0.5, 0.5);
   sprite.position.set(width / 2, height / 2, 0);
@@ -352,7 +389,16 @@ function handleTap(point) {
 }
 
 function touchPoint(value) {
-  return value ? { x: Number(value.clientX ?? value.x ?? 0), y: Number(value.clientY ?? value.y ?? 0) } : null;
+  if (!value) return null;
+  let x = Number(value.clientX ?? value.pageX ?? value.x ?? value.screenX);
+  let y = Number(value.clientY ?? value.pageY ?? value.y ?? value.screenY);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  if (x > width + 4 || y > height + 4) {
+    const scale = Math.max(1, ratio);
+    x /= scale;
+    y /= scale;
+  }
+  return { x, y };
 }
 
 function pointerEvent(type, point) {
@@ -364,6 +410,12 @@ wxApi.onTouchStart((event) => {
   if (!point) return;
   const screen = screenForState();
   const uiButton = Object.values(buttons).some((rect) => inside(point, rect));
+  if (uiButton) {
+    handleTap(point);
+    touch = { start: point, last: point, canvas: false, handled: true };
+    wxApi.vibrateShort?.({ type: 'light' });
+    return;
+  }
   touch = { start: point, last: point, canvas: screen === 'game' && !uiButton };
   if (touch.canvas) {
     nativeCanvas.dispatchEvent(pointerEvent('pointerdown', point));
@@ -383,6 +435,7 @@ wxApi.onTouchEnd((event) => {
   const point = touchPoint(event.changedTouches?.[0]) || touch.last;
   const active = touch;
   touch = null;
+  if (active.handled) return;
   if (active.canvas) nativeCanvas.dispatchEvent(pointerEvent('pointerup', point));
   else if (Math.hypot(point.x - active.start.x, point.y - active.start.y) < 16) handleTap(point);
 });

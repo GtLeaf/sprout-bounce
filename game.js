@@ -157,11 +157,11 @@ const renderer = new THREE.WebGLRenderer({ canvas: platform.canvas, antialias: t
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.setClearColor(0x14245b, 0);
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.enabled = !platform.canvas;
+if (!platform.canvas) renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.08;
+renderer.toneMapping = platform.canvas ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = platform.canvas ? 1 : 1.08;
 $('#game').appendChild(renderer.domElement);
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0x4e9f8a, 1.55));
@@ -217,13 +217,69 @@ const COLOR_DEFS = TILE_COLORS;
 const COLORS = COLOR_DEFS.map((item) => item.hex);
 const MAX_LIVES = 3;
 
-const lowPolyMaterial = (color, options = {}) => new THREE.MeshStandardMaterial({
-  color,
-  roughness: 0.86,
-  metalness: 0,
-  flatShading: true,
-  ...options
-});
+function refreshFallbackMaterial(material) {
+  if (!platform.canvas || !material.isMeshBasicMaterial) return;
+  const data = material.userData;
+  const baseColor = data.gameBaseColor || material.color;
+  const glowColor = data.gameGlowColor;
+  const glowAmount = THREE.MathUtils.clamp((data.gameGlowIntensity || 0) * 0.32, 0, 0.68);
+  material.color.copy(baseColor);
+  if (glowColor && glowAmount > 0) material.color.lerp(glowColor, glowAmount);
+}
+
+function setMaterialBaseColor(material, color) {
+  if (platform.canvas && material.isMeshBasicMaterial) {
+    material.userData.gameBaseColor = color.clone ? color.clone() : new THREE.Color(color);
+    refreshFallbackMaterial(material);
+    return;
+  }
+  material.color.copy(color);
+}
+
+function setMaterialGlow(material, color, intensity) {
+  if (material.emissive?.isColor) {
+    material.emissive.setHex(color);
+    material.emissiveIntensity = intensity;
+    return;
+  }
+  material.userData.gameGlowColor = new THREE.Color(color);
+  material.userData.gameGlowIntensity = intensity;
+  refreshFallbackMaterial(material);
+}
+
+function setMaterialGlowIntensity(material, intensity) {
+  if (material.emissive?.isColor) {
+    material.emissiveIntensity = intensity;
+    return;
+  }
+  material.userData.gameGlowIntensity = intensity;
+  refreshFallbackMaterial(material);
+}
+
+const lowPolyMaterial = (color, options = {}) => {
+  if (platform.canvas) {
+    const {
+      roughness: _roughness,
+      metalness: _metalness,
+      emissive = 0x000000,
+      emissiveIntensity = 0,
+      ...wechatOptions
+    } = options;
+    const material = new THREE.MeshBasicMaterial({ color, ...wechatOptions });
+    material.userData.gameBaseColor = material.color.clone();
+    material.userData.gameGlowColor = new THREE.Color(emissive);
+    material.userData.gameGlowIntensity = emissiveIntensity;
+    refreshFallbackMaterial(material);
+    return material;
+  }
+  return new THREE.MeshStandardMaterial({
+    color,
+    roughness: 0.86,
+    metalness: 0,
+    flatShading: true,
+    ...options
+  });
+};
 
 const boardSpan = BOARD * STEP - GAP;
 const platformRadius = (boardSpan + 0.34) / Math.SQRT2;
@@ -277,12 +333,10 @@ function applyColor(tile, index) {
   const data = tile.userData;
   data.color = index;
   const baseColor = new THREE.Color(COLORS[index]);
-  data.mainMat.color.copy(baseColor).offsetHSL(0, 0.025, -0.035);
-  data.topMat.color.copy(baseColor).offsetHSL(0, 0.025, 0.028);
-  data.mainMat.emissive.setHex(0x000000);
-  data.topMat.emissive.setHex(0x000000);
-  data.mainMat.emissiveIntensity = 0;
-  data.topMat.emissiveIntensity = 0;
+  setMaterialBaseColor(data.mainMat, baseColor.clone().offsetHSL(0, 0.025, -0.035));
+  setMaterialBaseColor(data.topMat, baseColor.clone().offsetHSL(0, 0.025, 0.028));
+  setMaterialGlow(data.mainMat, 0x000000, 0);
+  setMaterialGlow(data.topMat, 0x000000, 0);
 }
 
 function makeTile(row, col) {
@@ -1673,10 +1727,8 @@ function triggerMatch(tile) {
 }
 
 function styleWarningTile(member) {
-  member.userData.mainMat.emissive.setHex(0x5c1421);
-  member.userData.topMat.emissive.setHex(0xffe48a);
-  member.userData.mainMat.emissiveIntensity = 0.7;
-  member.userData.topMat.emissiveIntensity = 0.9;
+  setMaterialGlow(member.userData.mainMat, 0x5c1421, 0.7);
+  setMaterialGlow(member.userData.topMat, 0xffe48a, 0.9);
 }
 
 function extendWarningGroup(group, flashing) {
@@ -1707,10 +1759,8 @@ function setBurstingTile(tile, timer, burstIndex, warningId, chainDepth) {
   data.burstTotal = timer;
   data.burstIndex = burstIndex;
   data.bounceStrength = 0;
-  data.mainMat.emissive.setHex(0xffd75e);
-  data.topMat.emissive.setHex(0xffffff);
-  data.mainMat.emissiveIntensity = 1.1;
-  data.topMat.emissiveIntensity = 1.55;
+  setMaterialGlow(data.mainMat, 0xffd75e, 1.1);
+  setMaterialGlow(data.topMat, 0xffffff, 1.55);
 }
 
 function extendBurstingGroup(group, bursting) {
@@ -2118,7 +2168,7 @@ function updateTiles(delta, elapsed) {
       tile.position.y = Math.sin(elapsed * 28 + data.row + data.col) * 0.045;
       updateTileBounce(tile, delta);
       const pulse = 0.55 + Math.sin(elapsed * 20) * 0.35;
-      data.topMat.emissiveIntensity = pulse + 0.5;
+      setMaterialGlowIntensity(data.topMat, pulse + 0.5);
       if (data.timer <= 0) expiredWarnings.add(data.warningId);
     } else if (data.state === 'bursting') {
       data.timer -= delta;
@@ -2126,8 +2176,8 @@ function updateTiles(delta, elapsed) {
       const squeeze = Math.sin(Math.min(1, progress) * Math.PI * 0.5);
       tile.position.y = Math.sin(Math.min(1, progress) * Math.PI) * 0.12;
       tile.scale.set(1 + squeeze * 0.16, 1 - squeeze * 0.28, 1 + squeeze * 0.16);
-      data.mainMat.emissiveIntensity = 1.1 + squeeze * 0.75;
-      data.topMat.emissiveIntensity = 1.55 + squeeze * 0.65;
+      setMaterialGlowIntensity(data.mainMat, 1.1 + squeeze * 0.75);
+      setMaterialGlowIntensity(data.topMat, 1.55 + squeeze * 0.65);
       if (data.timer <= 0) {
         const playerCaught = !state.respawning && state.invulnerable <= 0
           && state.grounded && state.currentTile === tile;
@@ -2136,8 +2186,8 @@ function updateTiles(delta, elapsed) {
         data.state = 'falling';
         data.timer = 0.72 + Math.random() * 0.18;
         data.vy = -2.8 - Math.random() * 1.4;
-        data.mainMat.emissiveIntensity = 0;
-        data.topMat.emissiveIntensity = 0;
+        setMaterialGlowIntensity(data.mainMat, 0);
+        setMaterialGlowIntensity(data.topMat, 0);
         sfx('tilePop', { index: data.burstIndex, chain: data.chainDepth });
         if (playerCaught) loseLife('被爆破卷走了', 'blast');
       }
